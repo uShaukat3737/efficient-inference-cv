@@ -1,0 +1,12 @@
+- why MobileNetV2 ?
+  - less computationally heavy
+  - good with :
+    - pruning
+    - quantization
+    - batching experiments
+
+- why TorchScript?
+  -optimized version of PyTorch model
+  -removes Python dependency
+  -converts model into static graph
+  -runs faster in production
