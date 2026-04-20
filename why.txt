@@ -10,3 +10,8 @@
   -removes Python dependency
   -converts model into static graph
   -runs faster in production
+
+- why put in evaluation mode?
+  - disables:
+    - dropout -> randomly drops neurons to prevent over-fitting -> dont rely on specific neurons -> forces the neural network to think on itself 
+    - batchnorm updates -> we have evaluations already, having this on would mean using stats of the current batch which alone in itself is useless
