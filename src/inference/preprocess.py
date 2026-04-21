@@ -7,6 +7,6 @@ transform=transforms.Compose([
 ])
 
 def preprocess(image:Image.Image):
-  return transform(image).unsqueeze(0)        #apply transformation defined above and  add an extra dimension at the beginning to represent the batch size (1 in this case, since we're processing a single image)
+  return transform(image).unsqueeze(0)        #apply transformation defined above and add an extra dimension at the beginning to represent the batch size (1 in this case, since we're processing a single image)
 
 #(note : model expects input of shape [batch_size, channels, height, width], so we need to add the batch dimension even for a single image)
