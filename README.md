@@ -79,7 +79,18 @@ The API provides two endpoints:
 - `GET /health`: Checks if the API is running and the model is successfully loaded.
 - `POST /predict`: Upload an image (JPEG/PNG) to receive a class prediction (0-9 corresponding to CIFAR-10 classes).
 
+### 5. Benchmarking Inference Latency
+
+To compare the inference speed and CPU usage across the different model formats (raw PyTorch, TorchScript, and ONNX), run the benchmarking script:
+
+```bash
+python3 -m benchmarks.latency_test
+```
+
+This will run 100 iterations of inference for each model type and save a detailed JSON report to `benchmarks/results/`.
+
 ## Robustness & Error Handling
+
 
 This project is built with strong error handling at every layer:
 - **API Model Fallback**: The API attempts to load the most efficient model available (TorchScript). If unavailable or corrupted, it falls back to ONNX, and finally to the raw PyTorch model.
