@@ -1,0 +1,9 @@
+torch
+torchvision
+fastapi
+uvicorn
+pillow
+numpy
+psutil
+onnx
+python-multipart
