@@ -6,4 +6,5 @@ pillow
 numpy
 psutil
 onnx
+onnxruntime
 python-multipart
