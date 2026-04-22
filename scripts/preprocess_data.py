@@ -2,13 +2,12 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from pathlib import Path
-import os
 import json
 
 #Load raw CIFAR-10 dataset, apply transformations, and save processed batches.
 def preprocess_cifar10(batch_size=32):
   
-  # Define output directory
+  #define output directory
   output_dir = Path('data/processed')
   output_dir.mkdir(parents=True, exist_ok=True)
   
@@ -26,31 +25,31 @@ def preprocess_cifar10(batch_size=32):
   #split into 5:1 train:test
   #datasets
   trainset = torchvision.datasets.CIFAR10(
-      root='data/raw',
-      train=True,
-      download=True,
-      transform=transform
+    root='data/raw',
+    train=True,
+    download=True,
+    transform=transform
   )
 
   testset = torchvision.datasets.CIFAR10(
-      root='data/raw',
-      train=False,
-      download=True,
-      transform=transform
+    root='data/raw',
+    train=False,
+    download=True,
+    transform=transform
   )
 
   #dataloaders (batch processing)
   train_loader = torch.utils.data.DataLoader(
-      trainset, batch_size=batch_size, shuffle=False
+    trainset, batch_size=batch_size, shuffle=False
   )
 
   test_loader = torch.utils.data.DataLoader(
-      testset, batch_size=batch_size, shuffle=False
+    testset, batch_size=batch_size, shuffle=False
   )
 
   metadata = {
-      'train': {'batch_sizes': [], 'cumulative_sizes': [0]},
-      'test': {'batch_sizes': [], 'cumulative_sizes': [0]}
+    'train': {'batch_sizes': [], 'cumulative_sizes': [0]},
+    'test': {'batch_sizes': [], 'cumulative_sizes': [0]}
   }
 
   print("Processing training data in batches...")

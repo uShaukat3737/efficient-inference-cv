@@ -17,7 +17,7 @@ predictor = None
 
 @app.on_event("startup")
 async def startup_event():
-  """Load model on API startup."""
+  #Load model on API startup.
   global predictor
   try:
     predictor = Predictor("models/exported/model.pt")
@@ -47,9 +47,9 @@ LABELS = [
   500: {"description": "Server error"}
 })
 async def predict(file: UploadFile):
-  """Predict image class. Accepts JPEG, PNG formats only."""
+  #Predict image class. Accepts JPEG, PNG formats only.
   try:
-    # Validate file type
+    #validate file type
     allowed_types = {"image/jpeg", "image/png", "image/jpg"}
     if file.content_type not in allowed_types:
       logger.warning(f"Invalid file type: {file.content_type}")
@@ -58,7 +58,7 @@ async def predict(file: UploadFile):
         detail=f"Invalid file type: {file.content_type}. Allowed: JPEG, PNG"
       )
     
-    # Read and open image
+    #read and open image
     try:
       image_data = await file.read()
       if not image_data:
@@ -68,7 +68,7 @@ async def predict(file: UploadFile):
         )
       
       image = Image.open(io.BytesIO(image_data))
-      # Force RGB to avoid RGBA/grayscale issues
+      #force RGB to avoid RGBA/grayscale issues
       if image.mode != 'RGB':
         image = image.convert('RGB')
       logger.info(f"Image opened successfully: {image.size}, mode: {image.mode}")
@@ -91,7 +91,7 @@ async def predict(file: UploadFile):
         detail=f"Invalid image format: {str(e)}"
       )
     
-    # Preprocess and predict
+    #preprocess and predict
     try:
       input_tensor = preprocess(image)
       pred = predictor.predict(input_tensor)
@@ -120,7 +120,7 @@ async def predict(file: UploadFile):
 
 @app.get("/health")
 async def health_check():
-  """Health check endpoint."""
+  #health check endpoint.
   try:
     return {"status": "healthy", "model_loaded": predictor is not None}
   except Exception as e:

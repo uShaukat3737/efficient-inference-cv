@@ -102,7 +102,6 @@ def benchmark_pytorch():
   print_stats(times, cpu_usage)
   return stats
 
-
 # ONNX Benchmark
 def benchmark_onnx():
   print(f"\n{'='*50}")

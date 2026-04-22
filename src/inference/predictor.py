@@ -8,20 +8,9 @@ from src.training.model import get_model
 logger = logging.getLogger(__name__)
 
 class Predictor:
-  """Unified predictor supporting TorchScript, PyTorch, and ONNX models with error handling."""
   
   def __init__(self, model_path: str):
-    """
-    Initialize predictor with model path.
-    
-    Args:
-        model_path: Path to model file (.pt, .pth, or .onnx)
-        
-    Raises:
-        FileNotFoundError: If model file doesn't exist
-        ValueError: If unsupported model format
-        RuntimeError: If model fails to load
-    """
+
     self.model_type = None
     self.model = None
     self.session = None
@@ -32,7 +21,7 @@ class Predictor:
     
     try:
       if model_path.suffix == '.pt':
-        # Load TorchScript model
+        #load TorchScript model
         try:
           self.model = torch.jit.load(model_path)
           self.model.eval()
@@ -42,7 +31,7 @@ class Predictor:
           raise RuntimeError(f"Failed to load TorchScript model: {e}")
           
       elif model_path.suffix == '.pth':
-        # Load raw PyTorch model
+        #load raw PyTorch model
         try:
           self.model = get_model()
           state_dict = torch.load(model_path, weights_only=False)
@@ -54,7 +43,7 @@ class Predictor:
           raise RuntimeError(f"Failed to load PyTorch model: {e}")
           
       elif model_path.suffix == '.onnx':
-        # Load ONNX model
+        #load ONNX model
         try:
           sess_options = ort.SessionOptions()
           self.session = ort.InferenceSession(
@@ -74,21 +63,9 @@ class Predictor:
       raise
 
   def predict(self, input_tensor: torch.Tensor) -> int:
-    """
-    Classify the input image tensor.
-    
-    Args:
-        input_tensor: Input tensor of shape [1, 3, 32, 32]
-        
-    Returns:
-        Predicted class index (0-9)
-        
-    Raises:
-        RuntimeError: If prediction fails
-    """
     try:
       if self.model_type == 'onnx':
-        # Handle ONNX prediction
+        #handle ONNX prediction
         try:
           if isinstance(input_tensor, torch.Tensor):
             input_tensor = input_tensor.numpy()
@@ -105,7 +82,7 @@ class Predictor:
           raise RuntimeError(f"ONNX inference failed: {e}")
       
       else:
-        # Handle PyTorch models (TorchScript and raw PyTorch)
+        #handle PyTorch models (TorchScript and raw PyTorch)
         try:
           if not isinstance(input_tensor, torch.Tensor):
             raise TypeError(f"Expected torch.Tensor, got {type(input_tensor)}")
