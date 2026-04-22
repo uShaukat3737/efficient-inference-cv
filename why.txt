@@ -21,4 +21,13 @@
   - scales to large datasets without OOM
   - production-ready pattern
 
+- why take out LRU cache from model.py?
+  - it was slowing down the model
+  - it was not needed for the model
+
+- why bisect module?
+  - it is used to find the index of the batch that contains the given index
+  - it is faster than iterating through the list
+
+
 -note : add checkpoints per epoch as training my be halted sometimes 

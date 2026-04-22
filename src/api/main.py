@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CIFAR-10 Inference API")
 
-# Model loaded on startup
+#model loaded on startup
 predictor = None
 
 @app.on_event("startup")

@@ -63,7 +63,7 @@ The trained model weights will be saved to `models/trained/mobilenetv2.pth`.
 Export the trained PyTorch model to optimized formats (TorchScript and ONNX) for faster production inference:
 
 ```bash
-python3 scripts/export_model.py
+python3 -m scripts.export_model
 ```
 This generates `model.pt` and `model.onnx` in the `models/exported/` directory.
 

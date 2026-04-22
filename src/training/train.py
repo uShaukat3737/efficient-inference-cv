@@ -4,30 +4,31 @@ from pathlib import Path
 import logging
 import json
 import functools
+import bisect
 
-# Import model architecture (handles both module and script execution)
+#import model architecture (handles both module and script execution)
 try:
   from .model import get_model
 except ImportError:
   from model import get_model
 
-# Setup logging
+#setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class PreprocessedCIFAR10(torch.utils.data.Dataset):
-  """Load preprocessed CIFAR-10 batches from saved tensors with lazy loading."""
+  #Load preprocessed CIFAR-10 batches from saved tensors with lazy loading
   
   def __init__(self, data_dir='data/processed', train=True):
-    """Initialize dataset with lazy loading (batches loaded per index, not all at once)."""
+    #Initialize dataset with lazy loading (batches loaded per index, not all at once)
     self.data_dir = Path(data_dir)
     self.train = train
     self.split = 'train' if train else 'test'
     suffix = self.split
     
-    # Find batch files
-    self.batch_files = sorted(self.data_dir.glob(f'{suffix}_data_batch_*.pt'))
-    self.label_files = sorted(self.data_dir.glob(f'{suffix}_labels_batch_*.pt'))
+    #find batch files
+    self.batch_files = sorted(self.data_dir.glob(f'{suffix}_data_batch_*.pt'), key=lambda p: int(p.stem.split('_')[-1]))
+    self.label_files = sorted(self.data_dir.glob(f'{suffix}_labels_batch_*.pt'), key=lambda p: int(p.stem.split('_')[-1]))
     
     if not self.batch_files:
       raise FileNotFoundError(f"No batch files found in {self.data_dir}")
@@ -35,11 +36,11 @@ class PreprocessedCIFAR10(torch.utils.data.Dataset):
     if len(self.batch_files) != len(self.label_files):
       raise ValueError(f"Mismatch: {len(self.batch_files)} data batches, {len(self.label_files)} label batches")
     
-    # Track cumulative sizes for lazy loading
+    #track cumulative sizes for lazy loading
     self.batch_sizes = []
     self.cumulative_sizes = [0]
     
-    # Try to load metadata
+    #try to load metadata
     metadata_file = self.data_dir / 'metadata.json'
     if metadata_file.exists():
         try:
@@ -66,9 +67,8 @@ class PreprocessedCIFAR10(torch.utils.data.Dataset):
   def __len__(self):
     return self.cumulative_sizes[-1]
     
-  @functools.lru_cache(maxsize=16)
   def _load_batch(self, batch_idx):
-    """Load and cache a specific batch using LRU cache."""
+    #Load a specific batch
     try:
       batch_data = torch.load(self.batch_files[batch_idx])
       batch_labels = torch.load(self.label_files[batch_idx])
@@ -77,16 +77,12 @@ class PreprocessedCIFAR10(torch.utils.data.Dataset):
       raise RuntimeError(f"Failed to load batch {batch_idx}: {e}")
 
   def __getitem__(self, idx):
-    """Lazy load data: only load the specific batch needed for this index."""
+    #Lazy load data: only load the specific batch needed for this index
     if idx < 0 or idx >= len(self):
       raise IndexError(f"Index {idx} out of range for dataset of size {len(self)}")
     
-    # Find which batch contains this index
-    batch_idx = 0
-    for i, cumulative_size in enumerate(self.cumulative_sizes[1:], 1):
-      if idx < cumulative_size:
-        batch_idx = i - 1
-        break
+    #find which batch contains this index
+    batch_idx = bisect.bisect_right(self.cumulative_sizes, idx) - 1
     
     idx_within_batch = idx - self.cumulative_sizes[batch_idx]
     
@@ -94,7 +90,7 @@ class PreprocessedCIFAR10(torch.utils.data.Dataset):
     return batch_data[idx_within_batch], batch_labels[idx_within_batch]
 
 def train():
-  """Train the model with error handling and logging."""
+  #Train the model with error handling and logging
   try:
     # Use MPS if available, else CPU
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -111,10 +107,10 @@ def train():
       logger.error(f"Failed to load dataset: {e}")
       raise
 
-    # Create dataloader with batch size 32
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=32, shuffle=True)
+    #create dataloader with batch size 32
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=32, shuffle=True, num_workers=4)
 
-    # Initialize model, loss, optimizer
+    #initialize model, loss, optimizer
     try:
       model = get_model().to(device)
       logger.info("Model loaded successfully")
@@ -126,21 +122,39 @@ def train():
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    # Create checkpoint directory
+    #create checkpoint directory
     checkpoint_dir = Path('models/checkpoints')
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    # Train for 5 epochs
+    #train for 5 epochs
     num_epochs = 5
+    start_epoch = 0
+
+    #check for existing checkpoints to resume from
+    checkpoints = list(checkpoint_dir.glob("checkpoint_epoch_*.pth"))
+    if checkpoints:
+        # find the latest checkpoint based on epoch number
+        latest_checkpoint = max(checkpoints, key=lambda p: int(p.stem.split('_')[-1]))
+        try:
+            # using weights_only=False since optimizer states contain non-tensor data
+            checkpoint = torch.load(latest_checkpoint, weights_only=False)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            start_epoch = checkpoint['epoch']
+            logger.info(f"Resumed training from {latest_checkpoint.name} at epoch {start_epoch}")
+        except Exception as e:
+            logger.warning(f"Failed to load checkpoint {latest_checkpoint}: {e}. Starting from scratch.")
+
     logger.info(f"Starting training for {num_epochs} epochs")
     
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
       logger.info(f"Epoch {epoch+1}/{num_epochs}")
       running_loss = 0.0
 
       try:
         for batch_idx, (images, labels) in enumerate(trainloader):
-          images, labels = images.to(device), labels.to(device)
+          images = images.to(device, non_blocking=True)
+          labels = labels.to(device, non_blocking=True)
           outputs = model(images)
           loss = criterion(outputs, labels)
           running_loss += loss.item()
@@ -169,7 +183,7 @@ def train():
         logger.error(f"Failed to save checkpoint at epoch {epoch+1}: {e}")
         raise
 
-    # Save trained model
+    #save trained model
     try:
       model_save_path = Path('models/trained/mobilenetv2.pth')
       model_save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,6 +199,6 @@ def train():
     logger.error(f"Training failed: {e}")
     raise
 
-# Run training
+#run training
 if __name__ == "__main__":
   train()
