@@ -1,0 +1,2 @@
+# This directory tracks exported models (model.pt, model.onnx, etc.)
+# Individual model files are ignored by .gitignore but the export scripts are tracked in src/ and scripts/

@@ -42,8 +42,20 @@ pip-delete-this-directory.txt
 
 # Data & Models
 data/raw/
+data/processed/
 models/trained/
-models/exported/
+!models/exported/.gitkeep
+!scripts/export_model.py
+
+# Model artifacts (binary files - do NOT push)
+*.pth
+*.pt
+*.onnx
+*.onnx.data
+
+# Benchmarks & Results
+benchmarks/results/
+*.json
 
 # Credentials & Environment
 .env
