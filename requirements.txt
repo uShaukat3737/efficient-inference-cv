@@ -8,3 +8,7 @@ psutil
 onnx
 onnxruntime
 python-multipart
+
+#env loading
+python -m venv venv
+source venv/bin/activate   # (Mac)

@@ -15,3 +15,10 @@
   - disables:
     - dropout -> randomly drops neurons to prevent over-fitting -> dont rely on specific neurons -> forces the neural network to think on itself 
     - batchnorm updates -> we have evaluations already, having this on would mean using stats of the current batch which alone in itself is useless
+
+- why batch processing?
+  - memory efficient: 32 images at a time vs all 50k
+  - scales to large datasets without OOM
+  - production-ready pattern
+
+-note : add checkpoints per epoch as training my be halted sometimes 
