@@ -77,3 +77,4 @@ htmlcov/
 *.tmp
 *.bak
 *.log
+dump.rdb

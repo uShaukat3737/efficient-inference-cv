@@ -72,27 +72,20 @@ This generates `model.pt` and `model.onnx` in the `models/exported/` directory.
 
 The inference system relies on a background worker to dynamically batch requests. You must run Redis, the worker, and the API together.
 
-**Terminal 1 (Redis):**
-Start your local Redis server:
+**The easiest way** to start everything is using the included shell script, which launches all three services in the background and shuts them down gracefully when you press `Ctrl+C`:
+
 ```bash
-redis-server
+bash start.sh
 ```
 
-**Terminal 2 (Background Worker):**
-Start the background worker to consume the inference queue:
-```bash
-python3 -m src.serving.worker
-```
-
-**Terminal 3 (FastAPI Server):**
-Start the FastAPI server:
-```bash
-uvicorn src.api.main:app --reload
-```
+Alternatively, you can run them manually in separate terminal windows:
+1. `redis-server`
+2. `python3 -m src.serving.worker`
+3. `uvicorn src.api.main:app --reload`
 
 The API provides two endpoints:
 - `GET /health`: Checks if the API is running and Redis is successfully connected.
-- `POST /predict`: Upload an image (JPEG/PNG) to receive a class prediction (0-9 corresponding to CIFAR-10 classes).
+- `POST /predict`: Upload an image (JPEG/PNG) to receive a class prediction.
 
 ### 5. Benchmarking Suite
 
