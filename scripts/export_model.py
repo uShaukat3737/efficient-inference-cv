@@ -33,7 +33,14 @@ except Exception as e:
 
 try:
   #ONNX
-  torch.onnx.export(model,dummy_input,"models/exported/model.onnx") #also convert for onnx as industry standard 
+  torch.onnx.export(
+      model,
+      dummy_input,
+      "models/exported/model.onnx",
+      input_names=['input'],
+      output_names=['output'],
+      dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
+  ) #also convert for onnx as industry standard 
   logger.info("Successfully exported ONNX model to models/exported/model.onnx")
 except Exception as e:
   logger.error(f"Failed to export ONNX model: {e}")

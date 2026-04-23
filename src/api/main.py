@@ -2,7 +2,8 @@ from fastapi import FastAPI, UploadFile, HTTPException, status
 from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 import logging
-from src.inference.predictor import Predictor
+import asyncio
+from src.serving.producer import Producer
 from src.inference.preprocess import preprocess
 import io
 
@@ -12,29 +13,21 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CIFAR-10 Inference API")
 
-#model loaded on startup
-predictor = None
+#producer initialized on startup
+producer = None
 
 @app.on_event("startup")
 async def startup_event():
-  #Load model on API startup.
-  global predictor
+  #Initialize Redis producer on startup.
+  global producer
   try:
-    predictor = Predictor("models/exported/model.pt")
-    logger.info("Model loaded successfully on startup (TorchScript)")
-  except Exception as e_pt:
-    logger.warning(f"Failed to load model.pt: {e_pt}. Trying model.onnx...")
-    try:
-      predictor = Predictor("models/exported/model.onnx")
-      logger.info("Model loaded successfully on startup (ONNX)")
-    except Exception as e_onnx:
-      logger.warning(f"Failed to load model.onnx: {e_onnx}. Trying mobilenetv2.pth...")
-      try:
-        predictor = Predictor("models/trained/mobilenetv2.pth")
-        logger.info("Model loaded successfully on startup (PyTorch state_dict)")
-      except Exception as e_pth:
-        logger.error(f"All model loading attempts failed. Last error: {e_pth}")
-        raise RuntimeError("Failed to load any model on startup")
+    producer = Producer()
+    # verify connection
+    producer.redis.ping()
+    logger.info("Successfully connected to Redis and initialized Producer")
+  except Exception as e:
+    logger.error(f"Failed to initialize Redis Producer: {e}")
+    raise RuntimeError("Failed to connect to Redis on startup")
 
 LABELS = [
   "airplane", "automobile", "bird", "cat", "deer",
@@ -91,10 +84,28 @@ async def predict(file: UploadFile):
         detail=f"Invalid image format: {str(e)}"
       )
     
-    #preprocess and predict
+    #preprocess and queue prediction
     try:
       input_tensor = preprocess(image)
-      pred = predictor.predict(input_tensor)
+      
+      # enqueue the request
+      req_id = producer.push(input_tensor)
+      
+      # async polling for the result
+      result_key = f"result:{req_id}"
+      pred = None
+      
+      # poll for up to 5 seconds (50 * 0.1s)
+      for _ in range(50):
+          result = producer.redis.get(result_key)
+          if result is not None:
+              pred = int(result)
+              break
+          await asyncio.sleep(0.1)
+          
+      if pred is None:
+          raise TimeoutError("Inference request timed out waiting for worker")
+          
       logger.info(f"Prediction successful: class {pred}")
     except Exception as e:
       logger.error(f"Prediction failed: {e}")
@@ -122,7 +133,8 @@ async def predict(file: UploadFile):
 async def health_check():
   #health check endpoint.
   try:
-    return {"status": "healthy", "model_loaded": predictor is not None}
+    redis_connected = producer.redis.ping()
+    return {"status": "healthy", "redis_connected": redis_connected}
   except Exception as e:
     logger.error(f"Health check failed: {e}")
     raise HTTPException(

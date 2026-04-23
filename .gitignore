@@ -44,6 +44,8 @@ pip-delete-this-directory.txt
 data/raw/
 data/processed/
 models/trained/
+models/checkpoints/
+models/exported/
 !models/exported/.gitkeep
 !scripts/export_model.py
 

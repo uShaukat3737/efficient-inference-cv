@@ -7,8 +7,9 @@ A computer vision project focused on training and efficiently serving a deep lea
 - **Efficient Training**: Uses lazy-loading and metadata-backed caching to efficiently train on preprocessed CIFAR-10 batches without exhausting memory or causing severe disk I/O thrashing.
 - **Model Export**: Easily export trained PyTorch models to `TorchScript (.pt)` and `ONNX (.onnx)` formats for high-performance deployment.
 - **Unified Predictor**: A robust `Predictor` class capable of seamlessly switching between PyTorch, TorchScript, and ONNX models for inference.
-- **FastAPI Service**: A production-ready API for serving image predictions, complete with comprehensive error handling and automatic model fallbacks (prioritizing TorchScript -> ONNX -> PyTorch).
-- **Benchmarking**: Compare inference latencies across different model formats.
+- **FastAPI Service**: A production-ready API for serving image predictions, complete with comprehensive error handling.
+- **Asynchronous Batch Serving**: High-concurrency support using a Redis-backed message queue. The API asynchronously pushes requests to a background worker that dynamically batches images for massive throughput gains.
+- **Benchmarking**: Compare inference latencies, batch size efficiencies, and overall system throughput across different model formats.
 
 ## Project Structure
 
@@ -67,27 +68,50 @@ python3 -m scripts.export_model
 ```
 This generates `model.pt` and `model.onnx` in the `models/exported/` directory.
 
-### 4. Running the API
+### 4. Running the Serving System & API
 
-Start the FastAPI inference server:
+The inference system relies on a background worker to dynamically batch requests. You must run Redis, the worker, and the API together.
 
+**Terminal 1 (Redis):**
+Start your local Redis server:
+```bash
+redis-server
+```
+
+**Terminal 2 (Background Worker):**
+Start the background worker to consume the inference queue:
+```bash
+python3 -m src.serving.worker
+```
+
+**Terminal 3 (FastAPI Server):**
+Start the FastAPI server:
 ```bash
 uvicorn src.api.main:app --reload
 ```
 
 The API provides two endpoints:
-- `GET /health`: Checks if the API is running and the model is successfully loaded.
+- `GET /health`: Checks if the API is running and Redis is successfully connected.
 - `POST /predict`: Upload an image (JPEG/PNG) to receive a class prediction (0-9 corresponding to CIFAR-10 classes).
 
-### 5. Benchmarking Inference Latency
+### 5. Benchmarking Suite
 
-To compare the inference speed and CPU usage across the different model formats (raw PyTorch, TorchScript, and ONNX), run the benchmarking script:
+The project includes a comprehensive suite of benchmarking tools in the `benchmarks/` directory:
 
-```bash
-python3 -m benchmarks.latency_test
-```
+- **Latency Test**: Compares inference speed across PyTorch, TorchScript, and ONNX formats.
+  ```bash
+  python3 -m benchmarks.latency_test
+  ```
+- **Batch Experiments**: Tests the raw inference engines across various batch sizes (1 to 64) to demonstrate the efficiency gains of dynamic batching.
+  ```bash
+  python3 -m benchmarks.batch_experiments
+  ```
+- **Throughput Test**: An end-to-end stress test that bombards the FastAPI server with concurrent asynchronous requests to measure the overall system's Requests-Per-Second (RPS). *(Requires the API, Worker, and Redis to be running)*.
+  ```bash
+  python3 -m benchmarks.throughput_test
+  ```
 
-This will run 100 iterations of inference for each model type and save a detailed JSON report to `benchmarks/results/`.
+All scripts automatically save detailed JSON reports to `benchmarks/results/`.
 
 ## Robustness & Error Handling
 

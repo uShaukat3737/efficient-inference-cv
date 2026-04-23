@@ -97,3 +97,39 @@ class Predictor:
     except RuntimeError as e:
       logger.error(f"Prediction error: {e}")
       raise
+
+  def predict_batch(self, batch_tensor: torch.Tensor) -> list[int]:
+    try:
+      if self.model_type == 'onnx':
+        #handle ONNX prediction
+        try:
+          if isinstance(batch_tensor, torch.Tensor):
+            batch_tensor = batch_tensor.numpy()
+          
+          if not isinstance(batch_tensor, np.ndarray):
+            raise TypeError(f"Expected numpy array, got {type(batch_tensor)}")
+          
+          input_name = self.session.get_inputs()[0].name
+          output = self.session.run(None, {input_name: batch_tensor})
+          output_tensor = torch.tensor(output[0])
+          predictions = output_tensor.argmax(dim=1).tolist()
+          return predictions
+        except Exception as e:
+          raise RuntimeError(f"ONNX batch inference failed: {e}")
+      
+      else:
+        #handle PyTorch models (TorchScript and raw PyTorch)
+        try:
+          if not isinstance(batch_tensor, torch.Tensor):
+            raise TypeError(f"Expected torch.Tensor, got {type(batch_tensor)}")
+          
+          with torch.no_grad():
+            output = self.model(batch_tensor)
+            predictions = output.argmax(dim=1).tolist()
+            return predictions
+        except Exception as e:
+          raise RuntimeError(f"PyTorch batch inference failed: {e}")
+    
+    except RuntimeError as e:
+      logger.error(f"Batch prediction error: {e}")
+      raise

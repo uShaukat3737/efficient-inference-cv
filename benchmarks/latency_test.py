@@ -41,13 +41,13 @@ def compute_stats(times, cpu_usage):
     }
   }
 
-# TorchScript Benchmark
+#torchscript benchmark
 def benchmark_torchscript():
   print(f"\n{'='*50}")
   print(f"Benchmarking: TorchScript Model")
   print(f"{'='*50}")
 
-  # load TorchScript model (optimized version of PyTorch model for inference)
+  #load torchscript model (optimized version of PyTorch model for inference)
   model = torch.jit.load("models/exported/model.pt")
   model.eval()
 
@@ -71,7 +71,7 @@ def benchmark_torchscript():
   print_stats(times, cpu_usage)
   return stats
 
-# Raw PyTorch Benchmark
+#raw pytorch benchmark
 def benchmark_pytorch():
   print(f"\n{'='*50}")
   print(f"Benchmarking: Raw PyTorch Model")
@@ -102,7 +102,7 @@ def benchmark_pytorch():
   print_stats(times, cpu_usage)
   return stats
 
-# ONNX Benchmark
+#onnx benchmark
 def benchmark_onnx():
   print(f"\n{'='*50}")
   print(f"Benchmarking: ONNX Model")
@@ -138,7 +138,7 @@ def benchmark_onnx():
   print_stats(times, cpu_usage)
   return stats
 
-#Run all benchmarks
+#run all benchmarks
 if __name__ == "__main__":
   results = {
     "timestamp": datetime.now().isoformat(),

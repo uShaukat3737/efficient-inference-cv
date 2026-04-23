@@ -8,6 +8,10 @@ psutil
 onnx
 onnxruntime
 python-multipart
+redis
+aiohttp
+pytest
+fakeredis
 
 #env loading
 python -m venv venv
