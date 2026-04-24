@@ -8,8 +8,9 @@ A computer vision project focused on training and efficiently serving a deep lea
 - **Model Export**: Easily export trained PyTorch models to `TorchScript (.pt)` and `ONNX (.onnx)` formats for high-performance deployment.
 - **Unified Predictor**: A robust `Predictor` class capable of seamlessly switching between PyTorch, TorchScript, and ONNX models for inference.
 - **FastAPI Service**: A production-ready API for serving image predictions, complete with comprehensive error handling.
-- **Asynchronous Batch Serving**: High-concurrency support using a Redis-backed message queue. The API asynchronously pushes requests to a background worker that dynamically batches images for massive throughput gains.
-- **Benchmarking**: Compare inference latencies, batch size efficiencies, and overall system throughput across different model formats.
+- **Asynchronous Batch Serving**: High-concurrency support using a Redis-backed message queue. The API asynchronously pushes requests to a background worker pool that dynamically batches images for massive throughput gains.
+- **Worker Pool**: Scales to utilize multiple CPU cores by spawning independent multiprocessing workers (`worker_pool.py`) that safely consume from the same Redis queue.
+- **Benchmarking**: Compare inference latencies, batch size efficiencies, and system saturation scaling curves across different model formats and worker counts.
 
 ## Project Structure
 
@@ -25,7 +26,7 @@ A computer vision project focused on training and efficiently serving a deep lea
 ├── src/                # Core source code
 │   ├── api/            # FastAPI application (main.py)
 │   ├── inference/      # Prediction and inference preprocessing logic
-│   ├── serving/        # Background workers and redis integration
+│   ├── serving/        # Background workers, redis integration, and worker_pool.py
 │   ├── training/       # Training loops, datasets, and model architecture
 │   └── utils/          # Shared utilities
 └── tests/              # Unit and integration tests
@@ -80,12 +81,13 @@ bash start.sh
 
 Alternatively, you can run them manually in separate terminal windows:
 1. `redis-server`
-2. `python3 -m src.serving.worker`
+2. `python3 -m src.serving.worker_pool --workers 4`
 3. `uvicorn src.api.main:app --reload`
 
-The API provides two endpoints:
+The API provides three endpoints:
 - `GET /health`: Checks if the API is running and Redis is successfully connected.
-- `POST /predict`: Upload an image (JPEG/PNG) to receive a class prediction.
+- `POST /predict`: Upload an image (JPEG/PNG). The image is pushed to the Redis queue and processed by the highly-concurrent worker pool.
+- `POST /predict_sync`: A baseline endpoint that ignores the queue and processes the image locally on the main thread (useful for demonstrating CPU thread-thrashing under high concurrency).
 
 ### 5. Benchmarking Suite
 
@@ -99,9 +101,14 @@ The project includes a comprehensive suite of benchmarking tools in the `benchma
   ```bash
   python3 -m benchmarks.batch_experiments
   ```
-- **Throughput Test**: An end-to-end stress test that bombards the FastAPI server with concurrent asynchronous requests to measure the overall system's Requests-Per-Second (RPS). *(Requires the API, Worker, and Redis to be running)*.
+- **Throughput Test**: An end-to-end stress test that bombards the FastAPI server with concurrent asynchronous requests to measure the overall system's Requests-Per-Second (RPS).
   ```bash
   python3 -m benchmarks.throughput_test
+  ```
+- **Worker Scaling & Concurrency Experiments**: A fully automated experiment that orchestrates the API and Worker Pool to test throughput, latency (p50, p95, p99), and saturation points across `1, 2, 4, and 8` workers compared to the Sync API baseline.
+  ```bash
+  # Ensure redis-server is running first
+  python3 -m benchmarks.worker_experiments
   ```
 
 All scripts automatically save detailed JSON reports to `benchmarks/results/`.

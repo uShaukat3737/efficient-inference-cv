@@ -12,6 +12,7 @@ redis
 aiohttp
 pytest
 fakeredis
+httpx
 
 #env loading
 python -m venv venv
