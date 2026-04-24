@@ -3,6 +3,9 @@ from src.serving.consumer import Consumer
 from src.serving.batch_scheduler import BatchScheduler
 from src.inference.predictor import Predictor
 
+# Limit PyTorch threads to 1 to prevent CPU thrashing across multiple worker processes
+torch.set_num_threads(1)
+
 #load your TorchScript / model
 MODEL_PATH="models/exported/model.pt"
 

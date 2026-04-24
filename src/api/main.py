@@ -5,29 +5,47 @@ import logging
 import asyncio
 from src.serving.producer import Producer
 from src.inference.preprocess import preprocess
+from src.inference.predictor import Predictor
 import io
+import torch
+from contextlib import asynccontextmanager
 
-# Setup logging
+# Limit PyTorch threads to 1 to avoid CPU thrashing during concurrent requests
+torch.set_num_threads(1)
+
+#setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="CIFAR-10 Inference API")
+#app initialized below after lifespan definition
 
 #producer initialized on startup
 producer = None
+sync_predictor = None
 
-@app.on_event("startup")
-async def startup_event():
-  #Initialize Redis producer on startup.
-  global producer
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+  #initialize redis producer on startup
+  global producer, sync_predictor
   try:
     producer = Producer()
-    # verify connection
+    #verify connection
     producer.redis.ping()
     logger.info("Successfully connected to Redis and initialized Producer")
   except Exception as e:
     logger.error(f"Failed to initialize Redis Producer: {e}")
     raise RuntimeError("Failed to connect to Redis on startup")
+
+  try:
+    sync_predictor = Predictor("models/exported/model.pt")
+    logger.info("Successfully loaded synchronous Predictor")
+  except Exception as e:
+    logger.error(f"Failed to load synchronous Predictor: {e}")
+    
+  yield
+  #cleanup could go here when the app shuts down
+
+app = FastAPI(title="CIFAR-10 Inference API", lifespan=lifespan)
 
 LABELS = [
   "airplane", "automobile", "bird", "cat", "deer",
@@ -40,7 +58,7 @@ LABELS = [
   500: {"description": "Server error"}
 })
 async def predict(file: UploadFile):
-  #Predict image class. Accepts JPEG, PNG formats only.
+  #predict image class. accepts jpeg/png formats only
   try:
     #validate file type
     allowed_types = {"image/jpeg", "image/png", "image/jpg"}
@@ -61,7 +79,7 @@ async def predict(file: UploadFile):
         )
       
       image = Image.open(io.BytesIO(image_data))
-      #force RGB to avoid RGBA/grayscale issues
+      #force rgb to avoid rgba/grayscale issues
       if image.mode != 'RGB':
         image = image.convert('RGB')
       logger.info(f"Image opened successfully: {image.size}, mode: {image.mode}")
@@ -88,14 +106,14 @@ async def predict(file: UploadFile):
     try:
       input_tensor = preprocess(image)
       
-      # enqueue the request
+      #enqueue the request
       req_id = producer.push(input_tensor)
       
-      # async polling for the result
+      #async polling for the result
       result_key = f"result:{req_id}"
       pred = None
       
-      # poll for up to 5 seconds (50 * 0.1s)
+      #poll for up to 5 seconds (50 * 0.1s)
       for _ in range(50):
           result = producer.redis.get(result_key)
           if result is not None:
@@ -129,9 +147,39 @@ async def predict(file: UploadFile):
       detail="Internal server error"
     )
 
+#baseline model without using redis or async
+@app.post("/predict_sync")
+def predict_sync(file: UploadFile):
+  try:
+    allowed_types = {"image/jpeg", "image/png", "image/jpg"}
+    if file.content_type not in allowed_types:
+      raise HTTPException(status_code=400, detail="Invalid file type")
+      
+    image_data = file.file.read()
+    image = Image.open(io.BytesIO(image_data))
+    if image.mode != 'RGB':
+      image = image.convert('RGB')
+      
+    input_tensor = preprocess(image)
+    
+    #run direct blocking inference on the main thread pool
+    predictions = sync_predictor.predict_batch(input_tensor)
+    pred = int(predictions[0])
+    
+    return {
+      "class_id": pred,
+      "class_name": LABELS[pred],
+      "confidence": "N/A (Sync API)"
+    }
+  except HTTPException:
+    raise
+  except Exception as e:
+    logger.error(f"Sync prediction failed: {e}")
+    raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/health")
 async def health_check():
-  #health check endpoint.
+  #health check endpoint
   try:
     redis_connected = producer.redis.ping()
     return {"status": "healthy", "redis_connected": redis_connected}

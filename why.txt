@@ -31,3 +31,9 @@
 
 
 -note : add checkpoints per epoch as training my be halted sometimes 
+
+- why use torch.set_num_threads(1) for inference APIs?
+  - by default, PyTorch attempts to use all available CPU cores per inference request.
+  - under high concurrency (e.g. 20+ concurrent requests), this causes massive thread contention.
+  - this thread explosion leads to severe CPU thrashing, causing the system to hang or drastically slow down.
+  - setting threads to 1 forces parallelism to be handled safely at the API level (via async) and worker pool level (via multiprocessing) instead of PyTorch intra-op threading.
