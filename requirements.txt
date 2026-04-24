@@ -13,6 +13,9 @@ aiohttp
 pytest
 fakeredis
 httpx
+grpcio
+grpcio-tools
+grpcio-reflection
 
 #env loading
 python -m venv venv

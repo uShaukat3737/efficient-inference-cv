@@ -78,3 +78,11 @@ htmlcov/
 *.bak
 *.log
 dump.rdb
+
+# gRPC generated stubs (regenerate with grpc_tools.protoc — do not hand-edit)
+src/grpc_api/inference_pb2.py
+src/grpc_api/inference_pb2_grpc.py
+
+# Claude Code
+CLAUDE.md
+.claude/

@@ -1,0 +1,64 @@
+- why lazy load dataset instead of loading into memory?
+  - attempting to load 50k images caused extreme ram usage, swapping, and oom crashes
+  - model training would fail mid-epoch requiring restarts
+  - lazy loading with preprocessed batches and bisect module reduces memory from 50gb+ to ~200mb
+
+- why use a strict latency timeout trigger in batch schedulers?
+  - using blocking pop (brpop) caused workers to hang indefinitely under low traffic
+  - api latency was unbounded, users waited indefinitely
+  - non-blocking polling (rpop + time.sleep) with a 20ms timeout bounds maximum latency by forcing partial batch processing
+
+- why disable pytorch intra-op parallelism (torch.set_num_threads(1))?
+  - synchronous endpoints under high concurrency (20+) spawned 160+ active threads simultaneously
+  - caused severe os context-switching overhead and cpu starvation (latency skyrocketed to 5000+ms)
+  - disabling forces concurrency to be managed gracefully at the api and worker pool level
+
+- why take out lru cache?
+  - cache invalidation and memory indirection overhead slowed down tensor retrieval
+  - benchmarking showed inference latency increased by 30-40%
+  - the underlying bisect logic was already much faster
+
+- why use a redis-backed queue instead of direct inference?
+  - direct inference blocked the asgi event loop, limiting throughput to ~5 rps
+  - decoupling via producer/consumer allows fastapi to instantly return while dedicated workers batch requests (1000+ rps)
+
+- why fix batch size inconsistency?
+  - caused shape mismatches and data loading failures during training
+  - consistent sizes across training and inference prevent dimension mismatch errors
+
+- why reorganize directory hierarchy?
+  - initial structure scattered related code
+  - modular structure (src/training, src/inference, src/serving, src/api) makes it highly maintainable
+
+- why implement a model format fallback chain?
+  - different formats have different performance characteristics (torchscript > onnx > pytorch)
+  - robust fallback ensures the api always works with the fastest available format
+
+- why implement image validation and error handling?
+  - corrupted files or wrong formats caused cryptic server crashes
+  - catching errors and returning http 400 with descriptive messages vastly improves api stability
+
+- why add checkpoints per epoch?
+  - long training runs could fail mid-training, losing all progress
+  - checkpoints allow resuming from the last successful epoch
+
+- why scale with a multiprocessing worker pool?
+  - single-threaded inference bottlenecked concurrency
+  - independent processes consuming from redis scale linearly (4 workers = ~200 rps)
+
+- why compare rest vs grpc?
+  - rest uses json/multipart over http/1.1 (heavy parsing, network payloads, base64 adds 33% overhead)
+  - grpc uses protobuf over http/2, reducing payload size and cpu time drastically
+  - proves whether grpc optimizes ultra-high throughput scenarios (1000+ rps)
+
+- why benchmark throughput vs latency trade-offs?
+  - larger batches increase throughput but increase per-request latency
+  - automated benchmarking finds the optimal operational balance
+
+- why use a robust model export script?
+  - exporting requires handling jit tracing, batch dimensions, and unsupported ops
+  - validation ensures exported models produce identical output to the pytorch original
+
+- why create test coverage for async components?
+  - redis queues and background consumers are difficult to test natively
+  - mocking (test_api) and fakeredis (test_queue) allows rapid testing without real servers
