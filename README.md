@@ -10,7 +10,9 @@ A computer vision project focused on training and efficiently serving a deep lea
 - **FastAPI Service**: A production-ready API for serving image predictions, complete with comprehensive error handling.
 - **Asynchronous Batch Serving**: High-concurrency support using a Redis-backed message queue. The API asynchronously pushes requests to a background worker pool that dynamically batches images for massive throughput gains.
 - **Worker Pool**: Scales to utilize multiple CPU cores by spawning independent multiprocessing workers (`worker_pool.py`) that safely consume from the same Redis queue.
-- **Benchmarking**: Compare inference latencies, batch size efficiencies, and system saturation scaling curves across different model formats and worker counts.
+- **Dual Protocol Support**: REST (FastAPI) and gRPC endpoints for protocol comparison under high load. gRPC uses HTTP/2 multiplexing and Protobuf serialization for reduced overhead.
+- **Per-Request Metrics**: Internal instrumentation tracks queue wait time, inference latency, and total end-to-end latency with percentile aggregation (p50, p95, p99). Exposed via `/metrics` endpoint for real-time system observability.
+- **Benchmarking**: Compare inference latencies, batch size efficiencies, system saturation scaling curves across different model formats, worker counts, protocols, and hardware accelerators.
 
 ## Project Structure
 
@@ -84,10 +86,13 @@ Alternatively, you can run them manually in separate terminal windows:
 2. `python3 -m src.serving.worker_pool --workers 4`
 3. `uvicorn src.api.main:app --reload`
 
-The API provides three endpoints:
+The REST API provides four endpoints:
 - `GET /health`: Checks if the API is running and Redis is successfully connected.
 - `POST /predict`: Upload an image (JPEG/PNG). The image is pushed to the Redis queue and processed by the highly-concurrent worker pool.
 - `POST /predict_sync`: A baseline endpoint that ignores the queue and processes the image locally on the main thread (useful for demonstrating CPU thread-thrashing under high concurrency).
+- `GET /metrics`: Returns aggregated performance metrics (latency percentiles, queue wait, inference time, batch size distribution) from the last 1000 requests.
+
+A gRPC server also runs on port 50051 for protocol comparison experiments.
 
 ### 5. Benchmarking Suite
 
@@ -110,8 +115,12 @@ The project includes a comprehensive suite of benchmarking tools in the `benchma
   # Ensure redis-server is running first
   python3 -m benchmarks.worker_experiments
   ```
+- **gRPC vs REST Protocol Comparison**: Measures payload sizes, latency, and throughput for both protocols at varying concurrency levels (1, 5, 20, 50 concurrent requests).
+  ```bash
+  python3 -m benchmarks.grpc_experiments
+  ```
 
-All scripts automatically save detailed JSON reports to `benchmarks/results/`.
+All scripts automatically save detailed JSON reports to `benchmarks/results/`. Use `/metrics` endpoint to observe latency breakdown during any benchmark run.
 
 ## Robustness & Error Handling
 
