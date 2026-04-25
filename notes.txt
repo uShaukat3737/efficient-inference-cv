@@ -62,3 +62,36 @@
 - why create test coverage for async components?
   - redis queues and background consumers are difficult to test natively
   - mocking (test_api) and fakeredis (test_queue) allows rapid testing without real servers
+
+--- Phase 5: Metrics Collector Implementation ---
+
+- why implement per-request metrics instrumentation?
+  - existing benchmarks only measure end-to-end http latency externally
+  - no visibility into latency breakdown: queue_wait vs batch_formation vs inference vs result_write
+  - without instrumentation, impossible to diagnose performance bottlenecks (is p99 spike from queue saturation or inference?)
+  - metrics feed all downstream experiments (protocol comparison, deployment env, hardware acceleration)
+
+- why record enqueue_time in producer payload (not api)?
+  - producer is the single chokepoint for all async requests
+  - timestamp at push time is perfectly synchronized with actual queue arrival
+  - distributes information naturally: api doesn't need to coordinate, workers see it directly
+
+- why write metrics:{req_id} from worker instead of api?
+  - worker sees true timing (dequeue, inference duration) that api cannot observe
+  - worker is the authority on batch_size, batch_trigger (size vs timeout), inference_ms
+  - separates concerns: worker owns inference metrics, api owns total_latency
+
+- why use in-process metrics_collector instead of persistent store?
+  - benchmarks run for minutes (1000+ requests), querying a database is expensive
+  - in-memory rolling window (size=1000) provides fast percentile computation
+  - research phase doesn't need durability; if process restarts, metrics reset
+
+- why aggregate with percentiles (p50/p95/p99) instead of just mean?
+  - mean latency hides tail behavior: mean=50ms but p99=500ms means users see inconsistent experience
+  - p99 is the latency most users encounter under load; p95 shows typical behavior
+  - reveals whether protocol/batching changes improve tail latency (research goal)
+
+- all 19 tests pass on first implementation
+  - strict tdd discipline (test red before implementing) prevented bugs
+  - mocking strategy (metrics json from redis) made tests fast and deterministic
+  - end-to-end smoke test (curl to /metrics) confirmed integration works
