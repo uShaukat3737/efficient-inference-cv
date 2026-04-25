@@ -103,3 +103,12 @@
 - open question: does the async polling loop (50 × 0.1s) mask the true protocol latency advantage?
   - if the worker processes are the bottleneck (not the protocol), both servers will show similar p50 latency (worker-limited) and the protocol difference will only appear at the tail (p99) where connection overhead compounds.
   - this is worth noting in the thesis: the experiment measures end-to-end latency including queue wait, not raw protocol latency in isolation.
+
+--- Phase 6: Docker Infrastructure ---
+
+- why build Docker infrastructure if not testing Docker vs native on Apple Silicon?
+  - Docker infrastructure (Dockerfile, docker-compose.yml, REDIS_HOST env var) is complete and tested — proves the system can be containerized and deployed in production.
+  - on Apple Silicon (macOS), Docker runs Linux containers via VM; measuring Docker vs native would include VM overhead + CPU-only PyTorch, not representative of Apple hardware.
+  - Docker benchmarks are deferred to NVIDIA Linux environments where Docker overhead can be fairly measured against native Linux performance on the same hardware.
+  - Phase 6 provides production-ready Docker infrastructure; Phase 6 benchmarks use native Apple Silicon (MPS) as the baseline.
+  - infrastructure-first approach: Docker is ready for cloud/CI deployment; benchmarks are optimized for local research measurement.

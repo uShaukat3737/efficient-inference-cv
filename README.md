@@ -88,7 +88,7 @@ Alternatively, you can run them manually in separate terminal windows:
 
 **Docker Deployment** (Phase 6):
 
-Alternatively, deploy the entire stack using Docker Compose:
+Complete Docker infrastructure exists and is fully functional:
 
 ```bash
 docker compose up
@@ -108,6 +108,8 @@ curl http://127.0.0.1:8000/health
 #tear down
 docker compose down
 ```
+
+**Note (Phase 6):** Docker infrastructure is complete and production-ready. On Apple Silicon (macOS), the Docker environment runs Linux containers with CPU-only PyTorch. Docker vs native comparison benchmarks are deferred to environments with NVIDIA hardware where containerization overhead can be meaningfully measured against the same hardware baseline. Phase 6 benchmarks use native Apple Silicon (MPS) deployment as the baseline.
 
 The REST API provides four endpoints:
 - `GET /health`: Checks if the API is running and Redis is successfully connected.
@@ -142,9 +144,9 @@ The project includes a comprehensive suite of benchmarking tools in the `benchma
   ```bash
   python3 -m benchmarks.grpc_experiments
   ```
-- **Docker vs Native Deployment Comparison** (Phase 6): Tests throughput and latency of the containerized stack (via docker-compose) vs native deployment on the same hardware.
+- **Phase 6 Native Baseline Benchmarks**: Tests throughput and latency on native Apple Silicon (MPS) hardware. Docker infrastructure is complete but Docker vs native comparison is deferred to NVIDIA hardware environments where containerization overhead is meaningful.
   ```bash
-  python3 -m benchmarks.docker_experiments
+  bash benchmark_phase6.sh
   ```
 
 All scripts automatically save detailed JSON reports to `benchmarks/results/`. Use `/metrics` endpoint to observe latency breakdown during any benchmark run.

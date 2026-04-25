@@ -56,8 +56,12 @@
   - all services communicate via Docker Compose service discovery (hostname resolution)
   - REDIS_HOST environment variable enables seamless Docker networking
   - Docker setup tested locally (image builds successfully)
-  - benchmarks/docker_experiments.py will compare Docker vs native throughput/latency once Docker daemon available
-  - Phase 6 complete: ready for Docker benchmarking when daemon available
+  - decision: Phase 6 benchmarks run native-only on Apple Silicon
+    - observed: Docker build on Mac pulls CUDA dependencies (850MB+) even though Apple Silicon doesn't have NVIDIA hardware
+    - cause: Docker on Mac runs Linux containers; PyTorch downloads CUDA-compatible wheels by default
+    - rationale: Docker on Apple Silicon (VM-based) includes virtualization overhead + CUDA waste, not representative of actual hardware
+    - decision: Benchmark on native Apple Silicon (MPS) only; Docker comparison deferred to NVIDIA hardware or cloud VM
+    - benchmark_phase6.sh updated to native-only mode
   - grpc uses protobuf over http/2, reducing payload size and cpu time drastically
   - proves whether grpc optimizes ultra-high throughput scenarios (1000+ rps)
 
