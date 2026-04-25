@@ -86,6 +86,29 @@ Alternatively, you can run them manually in separate terminal windows:
 2. `python3 -m src.serving.worker_pool --workers 4`
 3. `uvicorn src.api.main:app --reload`
 
+**Docker Deployment** (Phase 6):
+
+Alternatively, deploy the entire stack using Docker Compose:
+
+```bash
+docker compose up
+```
+
+This orchestrates:
+- `redis:7-alpine` — Redis service for request queueing
+- `worker` — Worker pool (4 processes) consuming from the queue
+- `api` — FastAPI server on port 8000
+
+The Docker setup auto-configures Redis hostname discovery via `REDIS_HOST` environment variable, enabling seamless multi-container networking. All services are ready when the API health check passes.
+
+```bash
+#verify the stack is healthy
+curl http://127.0.0.1:8000/health
+
+#tear down
+docker compose down
+```
+
 The REST API provides four endpoints:
 - `GET /health`: Checks if the API is running and Redis is successfully connected.
 - `POST /predict`: Upload an image (JPEG/PNG). The image is pushed to the Redis queue and processed by the highly-concurrent worker pool.
@@ -118,6 +141,10 @@ The project includes a comprehensive suite of benchmarking tools in the `benchma
 - **gRPC vs REST Protocol Comparison**: Measures payload sizes, latency, and throughput for both protocols at varying concurrency levels (1, 5, 20, 50 concurrent requests).
   ```bash
   python3 -m benchmarks.grpc_experiments
+  ```
+- **Docker vs Native Deployment Comparison** (Phase 6): Tests throughput and latency of the containerized stack (via docker-compose) vs native deployment on the same hardware.
+  ```bash
+  python3 -m benchmarks.docker_experiments
   ```
 
 All scripts automatically save detailed JSON reports to `benchmarks/results/`. Use `/metrics` endpoint to observe latency breakdown during any benchmark run.
