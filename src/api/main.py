@@ -3,7 +3,10 @@ from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 import logging
 import asyncio
+import json
+import time
 from src.serving.producer import Producer
+from src.serving.metrics_collector import MetricsCollector
 from src.inference.preprocess import preprocess
 from src.inference.predictor import Predictor
 import io
@@ -19,14 +22,15 @@ logger = logging.getLogger(__name__)
 
 #app initialized below after lifespan definition
 
-#producer initialized on startup
+#producer and metrics initialized on startup
 producer = None
 sync_predictor = None
+metrics_collector = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
   #initialize redis producer on startup
-  global producer, sync_predictor
+  global producer, sync_predictor, metrics_collector
   try:
     producer = Producer()
     #verify connection
@@ -41,7 +45,13 @@ async def lifespan(app: FastAPI):
     logger.info("Successfully loaded synchronous Predictor")
   except Exception as e:
     logger.error(f"Failed to load synchronous Predictor: {e}")
-    
+
+  try:
+    metrics_collector = MetricsCollector()
+    logger.info("Successfully initialized MetricsCollector")
+  except Exception as e:
+    logger.error(f"Failed to initialize MetricsCollector: {e}")
+
   yield
   #cleanup could go here when the app shuts down
 
@@ -59,6 +69,7 @@ LABELS = [
 })
 async def predict(file: UploadFile):
   #predict image class. accepts jpeg/png formats only
+  t0 = time.monotonic()
   try:
     #validate file type
     allowed_types = {"image/jpeg", "image/png", "image/jpg"}
@@ -123,7 +134,16 @@ async def predict(file: UploadFile):
           
       if pred is None:
           raise TimeoutError("Inference request timed out waiting for worker")
-          
+
+      #record metrics
+      total_latency_ms = (time.monotonic() - t0) * 1000
+      metrics_key = f"metrics:{req_id}"
+      raw_metrics = producer.redis.get(metrics_key)
+      if raw_metrics and metrics_collector:
+        metrics = json.loads(raw_metrics)
+        metrics["total_latency_ms"] = total_latency_ms
+        metrics_collector.record(metrics)
+
       logger.info(f"Prediction successful: class {pred}")
     except Exception as e:
       logger.error(f"Prediction failed: {e}")
@@ -131,7 +151,7 @@ async def predict(file: UploadFile):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=f"Prediction failed: {str(e)}"
       )
-    
+
     return {
       "class_id": int(pred),
       "class_name": LABELS[pred],
@@ -189,3 +209,10 @@ async def health_check():
       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
       detail="Health check failed"
     )
+
+@app.get("/metrics")
+async def get_metrics():
+  #return aggregated metrics from the rolling window
+  if metrics_collector:
+    return metrics_collector.get_stats()
+  return {"count": 0}

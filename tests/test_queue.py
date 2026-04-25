@@ -43,3 +43,21 @@ def test_producer_consumer_flow(mock_get_client, fake_redis):
     #queue should be empty now
     assert fake_redis.llen("inference_queue") == 0
     assert consumer.pop_non_blocking() is None
+
+
+@patch('src.serving.redis_client.RedisClient.get_client')
+def test_producer_includes_enqueue_time(mock_get_client, fake_redis):
+    #test that producer includes enqueue_time in the payload
+    mock_get_client.return_value = fake_redis
+
+    producer = Producer()
+    consumer = Consumer()
+
+    dummy_tensor = torch.randn(1, 3, 32, 32)
+    req_id = producer.push(dummy_tensor)
+
+    req = consumer.pop_non_blocking()
+
+    assert "enqueue_time" in req
+    assert isinstance(req["enqueue_time"], float)
+    assert req["enqueue_time"] > 0

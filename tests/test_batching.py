@@ -94,3 +94,49 @@ def test_timeout_trigger():
     #verify the model was called with exactly 1 item (the timeout trigger fired)
     assert model.predict_batch_called
     assert model.last_batch_size == 1
+
+
+def test_metrics_written_to_redis():
+    #verify that metrics:{req_id} is written to Redis with correct structure
+    items = []
+    for i in range(2):
+        items.append({
+            "id": f"req_{i}",
+            "data": torch.randn(1, 3, 32, 32).tolist(),
+            "enqueue_time": time.time()
+        })
+
+    consumer = MockConsumer(items)
+    model = MockModel()
+    #batch_size=8 (won't trigger), timeout=0.01 (will trigger after batch of 2)
+    scheduler = BatchScheduler(consumer, model, batch_size=8, timeout=0.01)
+
+    def stalling_pop():
+        if consumer.items:
+            return consumer.items.pop(0)
+        #sleep long enough to trigger timeout
+        time.sleep(0.02)
+        def thrower():
+            raise StopLoop()
+        consumer.pop_non_blocking = thrower
+        consumer.pop_blocking = thrower
+        return None
+
+    consumer.pop_non_blocking = stalling_pop
+    consumer.pop_blocking = stalling_pop
+
+    try:
+        scheduler.run()
+    except StopLoop:
+        pass
+
+    #verify that setex was called for both result: and metrics: keys
+    assert consumer.redis.setex.called, "setex was never called"
+    call_count = consumer.redis.setex.call_count
+    #2 requests × 2 setex calls (result + metrics) = 4 total
+    assert call_count >= 4, f"Expected at least 4 setex calls (2 results + 2 metrics), got {call_count}"
+
+    #verify metrics:{req_id} keys are present
+    metrics_keys = [call[0][0] for call in consumer.redis.setex.call_args_list]
+    metrics_keys_matching = [k for k in metrics_keys if k.startswith("metrics:")]
+    assert len(metrics_keys_matching) == 2, f"Expected 2 metrics keys, found {metrics_keys_matching}"
