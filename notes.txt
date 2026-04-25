@@ -1,3 +1,5 @@
+source venv/bin/activate
+
 - why lazy load dataset instead of loading into memory?
   - attempting to load 50k images caused extreme ram usage, swapping, and oom crashes
   - model training would fail mid-epoch requiring restarts
@@ -109,3 +111,32 @@
   - strict tdd discipline (test red before implementing) prevented bugs
   - mocking strategy (metrics json from redis) made tests fast and deterministic
   - end-to-end smoke test (curl to /metrics) confirmed integration works
+
+--- Phase 7: CPU vs Apple Metal (MPS) Benchmarking ---
+
+- why add device parameter to Predictor?
+  - training has always run on MPS (train.py uses torch.backends.mps.is_available())
+  - but inference Predictor was hardcoded to CPU (no .to(device) calls anywhere)
+  - all benchmark data collected so far (phases 3-6) measured CPU inference only
+  - phase 7 answers: does MPS inference beat CPU for the same model and batch sizes?
+
+- why default device="cpu" instead of auto-detecting MPS?
+  - auto-detection would change behavior for all existing callers (api, worker pool, batch_experiments)
+  - explicit parameter keeps callers in control; benchmark explicitly requests "mps"
+  - production serving stays on cpu unless intentionally changed
+
+- why skip ONNX on MPS?
+  - ONNX Runtime has no MPS backend on macOS; session silently falls back to CPUExecutionProvider
+  - benchmarking "onnx on mps" would measure cpu and label it mps — invalid comparison data
+
+- why use torch.mps.synchronize() before stopping the timer?
+  - MPS dispatches ops asynchronously (same model as CUDA)
+  - without synchronize(), timer captures dispatch overhead (~0.01ms), not inference (~5-15ms)
+  - would make MPS appear 100x faster than CPU — a false result
+
+- why use time.perf_counter() instead of time.time()?
+  - time.time() has ~1ms resolution on macOS, insufficient for sub-ms measurements
+  - perf_counter() uses the highest-resolution clock on the platform
+
+- tdd results: 8 tests written red first, all 8 passed after implementation
+  - full suite: 35/35 passed, zero regressions across all prior phases

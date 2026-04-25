@@ -6,7 +6,7 @@ A computer vision project focused on training and efficiently serving a deep lea
 
 - **Efficient Training**: Uses lazy-loading and metadata-backed caching to efficiently train on preprocessed CIFAR-10 batches without exhausting memory or causing severe disk I/O thrashing.
 - **Model Export**: Easily export trained PyTorch models to `TorchScript (.pt)` and `ONNX (.onnx)` formats for high-performance deployment.
-- **Unified Predictor**: A robust `Predictor` class capable of seamlessly switching between PyTorch, TorchScript, and ONNX models for inference.
+- **Unified Predictor**: A robust `Predictor` class capable of seamlessly switching between PyTorch, TorchScript, and ONNX models for inference, with optional device targeting (`"cpu"` or `"mps"` for Apple Metal).
 - **FastAPI Service**: A production-ready API for serving image predictions, complete with comprehensive error handling.
 - **Asynchronous Batch Serving**: High-concurrency support using a Redis-backed message queue. The API asynchronously pushes requests to a background worker pool that dynamically batches images for massive throughput gains.
 - **Worker Pool**: Scales to utilize multiple CPU cores by spawning independent multiprocessing workers (`worker_pool.py`) that safely consume from the same Redis queue.
@@ -147,6 +147,10 @@ The project includes a comprehensive suite of benchmarking tools in the `benchma
 - **Phase 6 Native Baseline Benchmarks**: Tests throughput and latency on native Apple Silicon (MPS) hardware. Docker infrastructure is complete but Docker vs native comparison is deferred to NVIDIA hardware environments where containerization overhead is meaningful.
   ```bash
   bash benchmark_phase6.sh
+  ```
+- **Device Benchmark (Phase 7)**: Compares inference latency and throughput on CPU vs Apple Metal (MPS) across PyTorch and TorchScript models at batch sizes 1–64. ONNX is CPU-only (ONNX Runtime has no MPS backend). Reveals where MPS acceleration provides meaningful speedup over CPU.
+  ```bash
+  python3 -m benchmarks.device_benchmark
   ```
 
 All scripts automatically save detailed JSON reports to `benchmarks/results/`. Use `/metrics` endpoint to observe latency breakdown during any benchmark run.
