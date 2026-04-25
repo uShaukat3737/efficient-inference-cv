@@ -11,12 +11,10 @@ python-multipart
 redis
 aiohttp
 pytest
+pytest-asyncio
 fakeredis
 httpx
 grpcio
 grpcio-tools
 grpcio-reflection
-
-#env loading
-python -m venv venv
-source venv/bin/activate   # (Mac)
+matplotlib
