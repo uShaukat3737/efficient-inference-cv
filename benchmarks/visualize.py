@@ -56,6 +56,38 @@ def plot_batch_latency(src: Path) -> Figure:
     return fig
 
 
+def plot_worker_scaling(src: Path) -> Figure:
+    data = _load(src)
+    async_scaling = data["async_queue_scaling"]
+
+    worker_counts = sorted(int(k.split("_")[0]) for k in async_scaling.keys())
+    concurrency_levels = sorted({row["concurrency"] for k in async_scaling for row in async_scaling[k]})
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    for conc in concurrency_levels:
+        ys = []
+        for w in worker_counts:
+            rows = async_scaling[f"{w}_workers"]
+            match = next((r for r in rows if r["concurrency"] == conc), None)
+            ys.append(match["rps"] if match else None)
+        ax.plot(worker_counts, ys, marker="o", label=f"concurrency={conc}")
+
+    sync_baseline = data.get("sync_api_baseline") or []
+    if sync_baseline:
+        baseline_rps = sync_baseline[0]["rps"]
+        ax.axhline(baseline_rps, color="gray", linestyle="--", linewidth=1,
+                   label=f"sync baseline (rps={baseline_rps:.1f})")
+
+    ax.set_xlabel("Worker count")
+    ax.set_ylabel("Throughput (requests / sec)")
+    ax.set_title("Async queue throughput vs worker count")
+    ax.set_xticks(worker_counts)
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
 def plot_batch_throughput(src: Path) -> Figure:
     data = _load(src)
     fig, ax = plt.subplots(figsize=(7, 4.5))
