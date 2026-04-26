@@ -56,6 +56,55 @@ def plot_batch_latency(src: Path) -> Figure:
     return fig
 
 
+DEVICE_LABELS = {"cpu": "CPU", "mps": "MPS"}
+DEVICE_LINESTYLES = {"cpu": "--", "mps": "-"}
+
+
+def _device_lines(ax, data, y_field):
+    #ONNX is excluded: ONNX Runtime has no MPS backend; comparing apples-to-apples requires same-format pairs
+    for device in ["cpu", "mps"]:
+        if device not in data["results"]:
+            continue
+        for fmt in ["torchscript", "pytorch"]:
+            rows = data["results"][device].get(fmt)
+            if not rows:
+                continue
+            xs = [r["batch_size"] for r in rows]
+            ys = [r[y_field] for r in rows]
+            ax.plot(xs, ys, marker="o",
+                    color=FORMAT_COLORS[fmt],
+                    linestyle=DEVICE_LINESTYLES[device],
+                    label=f"{DEVICE_LABELS[device]} - {FORMAT_LABELS[fmt]}")
+
+
+def plot_device_latency(src: Path) -> Figure:
+    data = _load(src)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    _device_lines(ax, data, "latency_per_image_ms")
+    ax.set_xscale("log", base=2)
+    ax.set_xlabel("Batch size")
+    ax.set_ylabel("Latency per image (ms)")
+    ax.set_title("CPU vs MPS: per-image latency by batch size")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_device_throughput(src: Path) -> Figure:
+    data = _load(src)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    _device_lines(ax, data, "throughput_img_per_sec")
+    ax.set_xscale("log", base=2)
+    ax.set_xlabel("Batch size")
+    ax.set_ylabel("Throughput (images / sec)")
+    ax.set_title("CPU vs MPS: throughput by batch size")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
 def plot_protocol_comparison(src: Path) -> Figure:
     data = _load(src)
     grpc = sorted(data["grpc_results"], key=lambda r: r["concurrency"])
