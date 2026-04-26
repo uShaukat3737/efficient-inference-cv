@@ -34,3 +34,43 @@ def plot_latency_formats(src: Path) -> Figure:
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     fig.tight_layout()
     return fig
+
+
+def plot_batch_latency(src: Path) -> Figure:
+    data = _load(src)
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    for fmt in ["torchscript", "pytorch", "onnx"]:
+        if fmt not in data:
+            continue
+        rows = data[fmt]
+        xs = [r["batch_size"] for r in rows]
+        ys = [r["latency_per_image_ms"] for r in rows]
+        ax.plot(xs, ys, marker="o", color=FORMAT_COLORS[fmt], label=FORMAT_LABELS[fmt])
+    ax.set_xscale("log", base=2)
+    ax.set_xlabel("Batch size")
+    ax.set_ylabel("Latency per image (ms)")
+    ax.set_title("Per-image latency vs batch size")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_batch_throughput(src: Path) -> Figure:
+    data = _load(src)
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    for fmt in ["torchscript", "pytorch", "onnx"]:
+        if fmt not in data:
+            continue
+        rows = data[fmt]
+        xs = [r["batch_size"] for r in rows]
+        ys = [r["batch_size"] / r["total_latency_ms"] * 1000.0 for r in rows]
+        ax.plot(xs, ys, marker="o", color=FORMAT_COLORS[fmt], label=FORMAT_LABELS[fmt])
+    ax.set_xscale("log", base=2)
+    ax.set_xlabel("Batch size")
+    ax.set_ylabel("Throughput (images / sec)")
+    ax.set_title("Throughput vs batch size")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend()
+    fig.tight_layout()
+    return fig
