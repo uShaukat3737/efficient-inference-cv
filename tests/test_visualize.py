@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
@@ -47,3 +46,53 @@ def test_plot_latency_formats_returns_figure(tmp_path):
     ax = fig.axes[0]
     bar_labels = [t.get_text() for t in ax.get_xticklabels()]
     assert set(bar_labels) == {"TorchScript", "PyTorch", "ONNX"}
+
+
+def _write_batch_fixture(path):
+    path.write_text(json.dumps({
+        "torchscript": [
+            {"batch_size": 1,  "total_latency_ms": 12.0, "latency_per_image_ms": 12.0},
+            {"batch_size": 8,  "total_latency_ms": 40.0, "latency_per_image_ms": 5.0},
+            {"batch_size": 32, "total_latency_ms": 96.0, "latency_per_image_ms": 3.0},
+        ],
+        "pytorch": [
+            {"batch_size": 1,  "total_latency_ms": 18.0, "latency_per_image_ms": 18.0},
+            {"batch_size": 8,  "total_latency_ms": 56.0, "latency_per_image_ms": 7.0},
+            {"batch_size": 32, "total_latency_ms": 128.0, "latency_per_image_ms": 4.0},
+        ],
+        "onnx": [
+            {"batch_size": 1,  "total_latency_ms": 22.0, "latency_per_image_ms": 22.0},
+            {"batch_size": 8,  "total_latency_ms": 72.0, "latency_per_image_ms": 9.0},
+            {"batch_size": 32, "total_latency_ms": 160.0, "latency_per_image_ms": 5.0},
+        ],
+    }))
+
+
+def test_plot_batch_latency_returns_figure(tmp_path):
+    from benchmarks.visualize import plot_batch_latency
+
+    src = tmp_path / "batch_experiments_20260101_000000.json"
+    _write_batch_fixture(src)
+
+    fig = plot_batch_latency(src)
+
+    assert isinstance(fig, Figure)
+    ax = fig.axes[0]
+    line_labels = {line.get_label() for line in ax.get_lines()}
+    assert {"TorchScript", "PyTorch", "ONNX"}.issubset(line_labels)
+
+
+def test_plot_batch_throughput_returns_figure(tmp_path):
+    from benchmarks.visualize import plot_batch_throughput
+
+    src = tmp_path / "batch_experiments_20260101_000000.json"
+    _write_batch_fixture(src)
+
+    fig = plot_batch_throughput(src)
+
+    assert isinstance(fig, Figure)
+    ax = fig.axes[0]
+    #throughput should be increasing with batch size for at least one format
+    ts_line = next(line for line in ax.get_lines() if line.get_label() == "TorchScript")
+    ydata = ts_line.get_ydata()
+    assert ydata[-1] > ydata[0]
