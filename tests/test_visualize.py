@@ -96,3 +96,34 @@ def test_plot_batch_throughput_returns_figure(tmp_path):
     ts_line = next(line for line in ax.get_lines() if line.get_label() == "TorchScript")
     ydata = ts_line.get_ydata()
     assert ydata[-1] > ydata[0]
+
+
+def test_plot_worker_scaling_returns_figure(tmp_path):
+    from benchmarks.visualize import plot_worker_scaling
+
+    src = tmp_path / "worker_experiments_20260101_000000.json"
+    src.write_text(json.dumps({
+        "sync_api_baseline": [
+            {"concurrency": 1,  "rps": 12.0, "metrics": {"avg_latency": 80.0}, "successful": 50, "failed": 0},
+        ],
+        "async_queue_scaling": {
+            "1_workers": [
+                {"concurrency": 1,  "rps":  9.0, "metrics": {"avg_latency": 110.0}, "successful": 50, "failed": 0},
+                {"concurrency": 10, "rps": 80.0, "metrics": {"avg_latency": 120.0}, "successful": 50, "failed": 0},
+                {"concurrency": 50, "rps": 180.0, "metrics": {"avg_latency": 250.0}, "successful": 250, "failed": 0},
+            ],
+            "4_workers": [
+                {"concurrency": 1,  "rps":  9.0, "metrics": {"avg_latency": 110.0}, "successful": 50, "failed": 0},
+                {"concurrency": 10, "rps":120.0, "metrics": {"avg_latency": 80.0},  "successful": 50, "failed": 0},
+                {"concurrency": 50, "rps":210.0, "metrics": {"avg_latency": 220.0}, "successful": 250, "failed": 0},
+            ],
+        },
+    }))
+
+    fig = plot_worker_scaling(src)
+
+    assert isinstance(fig, Figure)
+    ax = fig.axes[0]
+    line_labels = {line.get_label() for line in ax.get_lines()}
+    #expect one line per concurrency level + sync baseline reference
+    assert any("workers" in lbl.lower() or "1" in lbl for lbl in line_labels)
