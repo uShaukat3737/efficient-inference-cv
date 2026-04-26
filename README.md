@@ -18,21 +18,65 @@ A computer vision project focused on training and efficiently serving a deep lea
 ## Project Structure
 
 ```text
-├── benchmarks/         # Inference latency benchmarking scripts
-├── configs/            # Configuration files
-├── data/               # Raw and preprocessed CIFAR-10 data
-├── models/             # Checkpoints, trained models, and exported formats
-├── notebooks/          # Exploratory Jupyter notebooks
-├── scripts/            # Utility scripts for data preprocessing and model export
-│   ├── preprocess_data.py
-│   └── export_model.py
-├── src/                # Core source code
-│   ├── api/            # FastAPI application (main.py)
-│   ├── inference/      # Prediction and inference preprocessing logic
-│   ├── serving/        # Background workers, redis integration, and worker_pool.py
-│   ├── training/       # Training loops, datasets, and model architecture
-│   └── utils/          # Shared utilities
-└── tests/              # Unit and integration tests
+├── benchmarks/                  # Benchmark scripts and outputs
+│   ├── batch_experiments.py     # Batch size sweep (all formats, sizes 1–64)
+│   ├── benchmark_utils.py       # Shared async HTTP benchmark helpers
+│   ├── device_benchmark.py      # CPU vs MPS latency/throughput sweep
+│   ├── docker_experiments.py    # Docker vs native comparison
+│   ├── grpc_experiments.py      # REST vs gRPC protocol comparison
+│   ├── latency_test.py          # Per-format latency (PT / TorchScript / ONNX)
+│   ├── plot_utils.py            # latest_result() helper and shared paths
+│   ├── throughput_test.py       # Concurrent async request throughput test
+│   ├── visualize.py             # Generates all 7 PNG plots from results JSON
+│   ├── worker_experiments.py    # Worker scaling study (1 / 2 / 4 / 8 workers)
+│   ├── plots/                   # Generated PNGs (gitignored, re-created by visualize.py)
+│   └── results/                 # Benchmark output JSON files
+├── configs/                     # Configuration files
+├── data/
+│   ├── processed/               # Preprocessed CIFAR-10 tensor batches (.pt)
+│   └── raw/                     # Downloaded CIFAR-10 raw data
+├── info/
+│   ├── notes.txt                # Research observation log (failures, surprises, pivots)
+│   ├── why.txt                  # Design rationale journal
+│   └── fairness_log.txt         # Benchmark fairness fixes with before/after metrics
+├── models/
+│   ├── checkpoints/             # Per-epoch training checkpoints
+│   ├── exported/                # model.pt (TorchScript) and model.onnx
+│   └── trained/                 # mobilenetv2.pth (raw PyTorch weights)
+├── notebooks/                   # Exploratory Jupyter notebooks
+├── proto/
+│   └── inference.proto          # Protobuf definition for gRPC service
+├── scripts/
+│   ├── train.sh                 # Full training pipeline (preprocess → train → export)
+│   ├── start.sh                 # Start Redis + worker pool + FastAPI
+│   └── benchmark.sh             # Run all benchmarks and generate plots
+├── src/
+│   ├── api/
+│   │   └── main.py              # FastAPI app — /predict, /predict_sync, /health, /metrics
+│   ├── grpc_api/
+│   │   ├── server.py            # Async gRPC server (port 50051)
+│   │   ├── inference_pb2.py     # Generated Protobuf message classes
+│   │   └── inference_pb2_grpc.py
+│   ├── inference/
+│   │   ├── predictor.py         # Format-agnostic predictor (.pt / .pth / .onnx)
+│   │   └── preprocess.py        # Resize, normalize, add batch dim
+│   ├── serving/
+│   │   ├── batch_scheduler.py   # Batches requests (size=8 or 20ms timeout)
+│   │   ├── consumer.py          # Redis queue consumer (blocking/non-blocking)
+│   │   ├── metrics_collector.py # Rolling window aggregator (p50/p95/p99)
+│   │   ├── producer.py          # Pushes requests to Redis with enqueue timestamp
+│   │   ├── redis_client.py      # Redis connection helper
+│   │   ├── worker.py            # Single worker process loop
+│   │   └── worker_pool.py       # Spawns N worker processes
+│   └── training/
+│       ├── export_model.py      # Exports trained model to TorchScript and ONNX
+│       ├── model.py             # MobileNetV2 architecture definition
+│       ├── preprocess_data.py   # Downloads CIFAR-10, saves tensor batches
+│       └── train.py             # Training loop with per-epoch checkpointing
+├── tests/                       # Unit and integration tests (fakeredis, no live services)
+├── Dockerfile                   # Multi-stage build for containerized deployment
+├── docker-compose.yml           # Orchestrates redis, worker, and api services
+└── requirements.txt
 ```
 
 ## Getting Started
