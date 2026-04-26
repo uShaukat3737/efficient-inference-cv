@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from src.serving.redis_client import RedisClient
 
@@ -15,7 +16,8 @@ class Producer:
 
     request={
       "id":req_id,
-      "data":tensor.tolist()
+      "data":tensor.tolist(),
+      "enqueue_time":time.time()
     }
 
     #push to left of queue

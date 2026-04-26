@@ -10,6 +10,9 @@ from datetime import datetime
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.inference.predictor import Predictor
 
+#match worker pool conditions: one thread per process, same as latency_test.py
+torch.set_num_threads(1)
+
 RESULTS_DIR = Path("benchmarks/results")
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -31,9 +34,9 @@ def run_experiment(predictor, batch_size, num_runs=50):
         
     times = []
     for _ in range(num_runs):
-        start = time.time()
+        start = time.perf_counter()
         predictor.predict_batch(dummy_input)
-        end = time.time()
+        end = time.perf_counter()
         times.append((end - start) * 1000) #milliseconds
         
     mean_latency = np.mean(times)

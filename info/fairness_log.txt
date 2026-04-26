@@ -1,0 +1,127 @@
+benchmark fairness log
+======================
+tracks before/after metrics for every fairness fix applied to benchmark scripts.
+update this file whenever a new fairness issue is found and corrected.
+
+source json files referenced below are in benchmarks/results/.
+
+
+==============================================================================
+fix round 1 — 2026-04-26
+issue: onnx inter_op_num_threads unrestricted
+==============================================================================
+
+files changed:
+  benchmarks/latency_test.py    — added sess_options.inter_op_num_threads = 1
+  src/inference/predictor.py    — added intra_op_num_threads=1 and inter_op_num_threads=1
+                                   to onnxruntime SessionOptions
+
+root cause:
+  torch.set_num_threads(1) limits pytorch/torchscript to 1 thread.
+  intra_op_num_threads=1 limits within-operator parallelism in ort.
+  inter_op_num_threads was left at 0 (ort default = use all cores), allowing ort
+  to parallelise between operators while pytorch ran fully single-threaded.
+  predictor.py had no thread limits at all for onnx sessions.
+
+--- latency_test.py (batch=1, 100 runs) ---
+
+model          before (mean/min/max/std ms)     after (mean/min/max/std ms)
+torchscript    12.28 / 11.51 / 23.26 / 1.40    unchanged (not affected)
+pytorch        12.67 / 11.98 / 17.07 / 0.74    unchanged (not affected)
+onnx            1.04 /  1.02 /  1.11 / 0.01     1.54 /  1.02 /  9.98 / 1.64
+
+onnx gap vs torchscript: 12x before → 8x after
+
+source files:
+  before: latency_benchmark_20260422_234338.json
+  after:  latency_benchmark_20260426_094707.json  (intermediate, post round-1 only)
+
+--- batch_experiments.py (total latency ms, 50 runs per batch size) ---
+
+             onnx                    torchscript             pytorch
+batch   before    after         before    after         before    after
+1        0.72     1.05          13.04     13.04         15.59     16.42
+2        1.53     2.04          27.48     27.70         29.43     30.73
+4        1.78     4.09          30.97     30.23         31.83     32.07
+8        3.36     8.11          32.07     31.72         33.29     34.29
+16       5.44    16.09         134.01    131.46        131.00    135.31
+32      10.10    32.07         216.62    201.65        201.75    206.12
+64      18.18    64.39         366.33    419.12        360.61    371.47
+
+note: torchscript/pytorch unchanged because batch_experiments.py had no torch.set_num_threads()
+call at this stage — pytorch was already effectively single-threaded on this hardware for these
+batch sizes. onnx numbers rose because thread limits were now applied via predictor.py.
+
+source files:
+  before: batch_experiments_20260425_221239.json
+  after:  batch_experiments_20260426_101407.json  (intermediate, post round-1 only)
+
+
+==============================================================================
+fix round 2 — 2026-04-26
+issues: torch.no_grad() missing; time.time() instead of time.perf_counter();
+        torch.set_num_threads(1) missing from batch_experiments.py
+==============================================================================
+
+files changed:
+  benchmarks/latency_test.py    — wrapped warmup and timed loops in torch.no_grad() for
+                                   benchmark_torchscript() and benchmark_pytorch();
+                                   replaced time.time() with time.perf_counter() throughout
+  benchmarks/batch_experiments.py — added torch.set_num_threads(1) at module level;
+                                     replaced time.time() with time.perf_counter()
+
+root cause (no_grad):
+  pytorch builds an autograd graph every forward pass unless torch.no_grad() is set,
+  even when input tensors have requires_grad=False. this overhead (graph node allocation,
+  gradient bookkeeping) does not exist in torchscript or onnx. omitting no_grad unfairly
+  penalised pytorch and torchscript vs onnx.
+  predictor.py already used no_grad — latency_test.py was inconsistent with it.
+
+root cause (time.time):
+  time.time() has ~1ms resolution on macos, insufficient for sub-ms measurements.
+  device_benchmark.py already used perf_counter; latency_test.py and batch_experiments.py
+  did not. inconsistent clock resolution across benchmark scripts.
+
+root cause (set_num_threads in batch_experiments):
+  after round-1 fix, onnx sessions in predictor.py were thread-limited but pytorch/torchscript
+  had no explicit constraint in batch_experiments.py — the imbalance was reversed.
+
+--- latency_test.py (batch=1, 100 runs) ---
+
+model          round-1 result (mean ms)    round-2 result (mean ms)    change
+torchscript         11.72                        2.23                   -81%
+pytorch             12.22                        2.74                   -78%
+onnx                 1.54                        1.04                   -33%
+
+onnx gap vs torchscript: 8x after round-1 → 2.2x after round-2
+onnx gap vs pytorch:     8x after round-1 → 2.6x after round-2
+
+source files:
+  before (round-1 state): latency_benchmark_20260426_094707.json
+  after:                  latency_benchmark_20260426_102230.json
+
+--- batch_experiments.py (total latency ms, 50 runs per batch size) ---
+
+              onnx                    torchscript              pytorch
+batch   round1    round2        round1    round2         round1    round2
+1        1.05      1.05          13.04      2.33          16.42      2.84
+2        2.04      2.06          27.70      3.66          30.73      4.13
+4        4.09      4.09          30.23      4.73          32.07      5.20
+8        8.11      8.11          31.72      6.92          34.29      7.46
+16      16.09     16.09         131.46    327.50         135.31    322.86
+32      32.07     32.33         201.65    583.54         206.12    533.95
+64      64.39     64.39         419.12    978.08         371.47    998.02
+
+note on batch>=16 cliff:
+  with torch.set_num_threads(1) applied, torchscript and pytorch hit a sharp cliff at
+  batch=16 (~47x jump from batch=8). onnx scales linearly throughout.
+  cause: pytorch eager execution does not pre-plan memory layout; at batch=16 intermediate
+  activations spill out of L2 cache with no parallelism to compensate.
+  onnx runtime pre-plans memory layout at session creation; single-threaded execution
+  remains cache-efficient at all batch sizes.
+  production note: batch scheduler fires at batch_size=8 — within the efficient range.
+  at batch=8, torchscript (6.92ms) is now faster than onnx (8.11ms) in single-thread mode.
+
+source files:
+  before (round-1 state): batch_experiments_20260426_101407.json
+  after:                  batch_experiments_20260426_102622.json

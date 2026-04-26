@@ -6,11 +6,14 @@ A computer vision project focused on training and efficiently serving a deep lea
 
 - **Efficient Training**: Uses lazy-loading and metadata-backed caching to efficiently train on preprocessed CIFAR-10 batches without exhausting memory or causing severe disk I/O thrashing.
 - **Model Export**: Easily export trained PyTorch models to `TorchScript (.pt)` and `ONNX (.onnx)` formats for high-performance deployment.
-- **Unified Predictor**: A robust `Predictor` class capable of seamlessly switching between PyTorch, TorchScript, and ONNX models for inference.
+- **Unified Predictor**: A robust `Predictor` class capable of seamlessly switching between PyTorch, TorchScript, and ONNX models for inference, with optional device targeting (`"cpu"` or `"mps"` for Apple Metal).
 - **FastAPI Service**: A production-ready API for serving image predictions, complete with comprehensive error handling.
 - **Asynchronous Batch Serving**: High-concurrency support using a Redis-backed message queue. The API asynchronously pushes requests to a background worker pool that dynamically batches images for massive throughput gains.
 - **Worker Pool**: Scales to utilize multiple CPU cores by spawning independent multiprocessing workers (`worker_pool.py`) that safely consume from the same Redis queue.
-- **Benchmarking**: Compare inference latencies, batch size efficiencies, and system saturation scaling curves across different model formats and worker counts.
+- **Dual Protocol Support**: REST (FastAPI) and gRPC endpoints for protocol comparison under high load. gRPC uses HTTP/2 multiplexing and Protobuf serialization for reduced overhead.
+- **Per-Request Metrics**: Internal instrumentation tracks queue wait time, inference latency, and total end-to-end latency with percentile aggregation (p50, p95, p99). Exposed via `/metrics` endpoint for real-time system observability.
+- **Benchmarking**: Compare inference latencies, batch size efficiencies, system saturation scaling curves across different model formats, worker counts, protocols, and hardware accelerators.
+- **Visualization**: Single-command rendering of every benchmark JSON into publication-ready PNG plots (model format comparison, batch curves, worker scaling, protocol comparison, CPU vs MPS).
 
 ## Project Structure
 
@@ -84,10 +87,38 @@ Alternatively, you can run them manually in separate terminal windows:
 2. `python3 -m src.serving.worker_pool --workers 4`
 3. `uvicorn src.api.main:app --reload`
 
-The API provides three endpoints:
+**Docker Deployment** (Phase 6):
+
+Complete Docker infrastructure exists and is fully functional:
+
+```bash
+docker compose up
+```
+
+This orchestrates:
+- `redis:7-alpine` — Redis service for request queueing
+- `worker` — Worker pool (4 processes) consuming from the queue
+- `api` — FastAPI server on port 8000
+
+The Docker setup auto-configures Redis hostname discovery via `REDIS_HOST` environment variable, enabling seamless multi-container networking. All services are ready when the API health check passes.
+
+```bash
+#verify the stack is healthy
+curl http://127.0.0.1:8000/health
+
+#tear down
+docker compose down
+```
+
+**Note (Phase 6):** Docker infrastructure is complete and production-ready. On Apple Silicon (macOS), the Docker environment runs Linux containers with CPU-only PyTorch. Docker vs native comparison benchmarks are deferred to environments with NVIDIA hardware where containerization overhead can be meaningfully measured against the same hardware baseline. Phase 6 benchmarks use native Apple Silicon (MPS) deployment as the baseline.
+
+The REST API provides four endpoints:
 - `GET /health`: Checks if the API is running and Redis is successfully connected.
 - `POST /predict`: Upload an image (JPEG/PNG). The image is pushed to the Redis queue and processed by the highly-concurrent worker pool.
 - `POST /predict_sync`: A baseline endpoint that ignores the queue and processes the image locally on the main thread (useful for demonstrating CPU thread-thrashing under high concurrency).
+- `GET /metrics`: Returns aggregated performance metrics (latency percentiles, queue wait, inference time, batch size distribution) from the last 1000 requests.
+
+A gRPC server also runs on port 50051 for protocol comparison experiments.
 
 ### 5. Benchmarking Suite
 
@@ -110,8 +141,25 @@ The project includes a comprehensive suite of benchmarking tools in the `benchma
   # Ensure redis-server is running first
   python3 -m benchmarks.worker_experiments
   ```
+- **gRPC vs REST Protocol Comparison**: Measures payload sizes, latency, and throughput for both protocols at varying concurrency levels (1, 5, 20, 50 concurrent requests).
+  ```bash
+  python3 -m benchmarks.grpc_experiments
+  ```
+- **Phase 6 Native Baseline Benchmarks**: Tests throughput and latency on native Apple Silicon (MPS) hardware. Docker infrastructure is complete but Docker vs native comparison is deferred to NVIDIA hardware environments where containerization overhead is meaningful.
+  ```bash
+  bash benchmark_phase6.sh
+  ```
+- **Device Benchmark (Phase 7)**: Compares inference latency and throughput on CPU vs Apple Metal (MPS) across PyTorch and TorchScript models at batch sizes 1–64. ONNX is CPU-only (ONNX Runtime has no MPS backend). Reveals where MPS acceleration provides meaningful speedup over CPU.
+  ```bash
+  python3 -m benchmarks.device_benchmark
+  ```
+- **Visualization (Phase 8)**: Renders all benchmark JSON results in `benchmarks/results/` into seven publication-ready PNG plots in `benchmarks/plots/`. Picks the most recent run per experiment type by filename timestamp.
+  ```bash
+  python3 -m benchmarks.visualize
+  ```
+  Generated figures: model format latency comparison, batch latency/throughput curves, async worker scaling, gRPC vs REST protocol comparison, and CPU vs MPS device latency/throughput curves.
 
-All scripts automatically save detailed JSON reports to `benchmarks/results/`.
+All scripts automatically save detailed JSON reports to `benchmarks/results/`. Use `/metrics` endpoint to observe latency breakdown during any benchmark run.
 
 ## Robustness & Error Handling
 

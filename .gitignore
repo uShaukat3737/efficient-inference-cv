@@ -57,6 +57,7 @@ models/exported/
 
 # Benchmarks & Results
 benchmarks/results/
+benchmarks/plots/*.png
 *.json
 
 # Credentials & Environment
@@ -86,3 +87,5 @@ src/grpc_api/inference_pb2_grpc.py
 # Claude Code
 CLAUDE.md
 .claude/
+
+benchmark_phase6.sh
