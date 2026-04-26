@@ -150,3 +150,69 @@ def test_plot_protocol_comparison_returns_figure(tmp_path):
     assert isinstance(fig, Figure)
     #expect 2 subplots: rps and latency
     assert len(fig.axes) == 2
+
+
+def _write_device_fixture(path):
+    path.write_text(json.dumps({
+        "timestamp": "2026-01-01T00:00:00",
+        "platform": "darwin-arm64",
+        "devices_available": ["cpu", "mps"],
+        "results": {
+            "cpu": {
+                "torchscript": [
+                    {"batch_size": 1,  "total_latency_ms": 13.0, "latency_per_image_ms": 13.0, "throughput_img_per_sec": 76.0},
+                    {"batch_size": 8,  "total_latency_ms": 40.0, "latency_per_image_ms": 5.0,  "throughput_img_per_sec": 200.0},
+                ],
+                "pytorch": [
+                    {"batch_size": 1,  "total_latency_ms": 18.0, "latency_per_image_ms": 18.0, "throughput_img_per_sec": 55.0},
+                    {"batch_size": 8,  "total_latency_ms": 56.0, "latency_per_image_ms": 7.0,  "throughput_img_per_sec": 142.0},
+                ],
+                "onnx": [
+                    {"batch_size": 1,  "total_latency_ms": 22.0, "latency_per_image_ms": 22.0, "throughput_img_per_sec": 45.0},
+                ],
+            },
+            "mps": {
+                "torchscript": [
+                    {"batch_size": 1,  "total_latency_ms":  6.6, "latency_per_image_ms":  6.6, "throughput_img_per_sec": 151.0},
+                    {"batch_size": 8,  "total_latency_ms": 12.0, "latency_per_image_ms": 1.5,  "throughput_img_per_sec": 666.0},
+                ],
+                "pytorch": [
+                    {"batch_size": 1,  "total_latency_ms":  8.0, "latency_per_image_ms":  8.0, "throughput_img_per_sec": 125.0},
+                    {"batch_size": 8,  "total_latency_ms": 14.0, "latency_per_image_ms": 1.75, "throughput_img_per_sec": 571.0},
+                ],
+            },
+        },
+    }))
+
+
+def test_plot_device_latency_returns_figure(tmp_path):
+    from benchmarks.visualize import plot_device_latency
+
+    src = tmp_path / "device_benchmark_20260101_000000.json"
+    _write_device_fixture(src)
+
+    fig = plot_device_latency(src)
+
+    assert isinstance(fig, Figure)
+    ax = fig.axes[0]
+    line_labels = {line.get_label() for line in ax.get_lines()}
+    #4 lines: CPU x {TorchScript, PyTorch} + MPS x {TorchScript, PyTorch}
+    assert any("CPU" in lbl and "TorchScript" in lbl for lbl in line_labels)
+    assert any("MPS" in lbl and "TorchScript" in lbl for lbl in line_labels)
+    assert not any("ONNX" in lbl for lbl in line_labels)
+
+
+def test_plot_device_throughput_returns_figure(tmp_path):
+    from benchmarks.visualize import plot_device_throughput
+
+    src = tmp_path / "device_benchmark_20260101_000000.json"
+    _write_device_fixture(src)
+
+    fig = plot_device_throughput(src)
+
+    assert isinstance(fig, Figure)
+    ax = fig.axes[0]
+    mps_ts = next(line for line in ax.get_lines() if "MPS" in line.get_label() and "TorchScript" in line.get_label())
+    cpu_ts = next(line for line in ax.get_lines() if "CPU" in line.get_label() and "TorchScript" in line.get_label())
+    #MPS should outperform CPU on TorchScript at batch_size=8
+    assert mps_ts.get_ydata()[-1] > cpu_ts.get_ydata()[-1]
