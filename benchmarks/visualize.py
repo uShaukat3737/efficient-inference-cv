@@ -18,6 +18,45 @@ def _load(path: Path) -> dict:
         return json.load(f)
 
 
+def _save(fig: Figure, plots_dir: Path, name: str) -> Path:
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    out = plots_dir / name
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+PLOT_PIPELINE = [
+    ("latency_benchmark",  "fig_01_latency_formats.png",     "plot_latency_formats"),
+    ("batch_experiments",  "fig_02_batch_latency.png",       "plot_batch_latency"),
+    ("batch_experiments",  "fig_03_batch_throughput.png",    "plot_batch_throughput"),
+    ("worker_experiments", "fig_04_worker_scaling.png",      "plot_worker_scaling"),
+    ("grpc_experiments",   "fig_05_protocol_comparison.png", "plot_protocol_comparison"),
+    ("device_benchmark",   "fig_06_device_latency.png",      "plot_device_latency"),
+    ("device_benchmark",   "fig_07_device_throughput.png",   "plot_device_throughput"),
+]
+
+
+def generate_all(results_dir: Path = None, plots_dir: Path = None) -> list[Path]:
+    from benchmarks.plot_utils import DEFAULT_RESULTS_DIR
+    results_dir = Path(results_dir) if results_dir else DEFAULT_RESULTS_DIR
+    plots_dir = Path(plots_dir) if plots_dir else DEFAULT_PLOTS_DIR
+
+    written = []
+    module_globals = globals()
+    for prefix, out_name, fn_name in PLOT_PIPELINE:
+        src = latest_result(prefix, results_dir=results_dir)
+        fig = module_globals[fn_name](src)
+        written.append(_save(fig, plots_dir, out_name))
+    return written
+
+
+if __name__ == "__main__":
+    paths = generate_all()
+    for p in paths:
+        print(f"wrote {p}")
+
+
 def plot_latency_formats(src: Path) -> Figure:
     data = _load(src)
     models = data["models"]
