@@ -56,6 +56,37 @@ def plot_batch_latency(src: Path) -> Figure:
     return fig
 
 
+def plot_protocol_comparison(src: Path) -> Figure:
+    data = _load(src)
+    grpc = sorted(data["grpc_results"], key=lambda r: r["concurrency"])
+    rest = sorted(data["rest_async_results"], key=lambda r: r["concurrency"])
+
+    fig, (ax_rps, ax_lat) = plt.subplots(1, 2, figsize=(12, 4.5))
+
+    ax_rps.plot([r["concurrency"] for r in grpc], [r["rps"] for r in grpc],
+                marker="o", color="#1f77b4", label="gRPC")
+    ax_rps.plot([r["concurrency"] for r in rest], [r["rps"] for r in rest],
+                marker="s", color="#ff7f0e", label="REST")
+    ax_rps.set_xlabel("Concurrency")
+    ax_rps.set_ylabel("Throughput (requests / sec)")
+    ax_rps.set_title("Throughput: gRPC vs REST")
+    ax_rps.grid(True, linestyle="--", alpha=0.4)
+    ax_rps.legend()
+
+    ax_lat.plot([r["concurrency"] for r in grpc], [r["p95_latency_ms"] for r in grpc],
+                marker="o", color="#1f77b4", label="gRPC p95")
+    ax_lat.plot([r["concurrency"] for r in rest], [r["p95_latency_ms"] for r in rest],
+                marker="s", color="#ff7f0e", label="REST p95")
+    ax_lat.set_xlabel("Concurrency")
+    ax_lat.set_ylabel("p95 latency (ms)")
+    ax_lat.set_title("p95 latency: gRPC vs REST")
+    ax_lat.grid(True, linestyle="--", alpha=0.4)
+    ax_lat.legend()
+
+    fig.tight_layout()
+    return fig
+
+
 def plot_worker_scaling(src: Path) -> Figure:
     data = _load(src)
     async_scaling = data["async_queue_scaling"]
