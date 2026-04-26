@@ -127,3 +127,26 @@ def test_plot_worker_scaling_returns_figure(tmp_path):
     line_labels = {line.get_label() for line in ax.get_lines()}
     #expect one line per concurrency level + sync baseline reference
     assert any("workers" in lbl.lower() or "1" in lbl for lbl in line_labels)
+
+
+def test_plot_protocol_comparison_returns_figure(tmp_path):
+    from benchmarks.visualize import plot_protocol_comparison
+
+    src = tmp_path / "grpc_experiments_20260101_000000.json"
+    src.write_text(json.dumps({
+        "payload_sizes": {"grpc_protobuf_bytes": 1416, "rest_multipart_bytes": 1594, "rest_overhead_pct": 12.57},
+        "grpc_results": [
+            {"protocol": "grpc", "concurrency": 1,  "rps":  9.1, "avg_latency_ms": 109.0, "p95_latency_ms": 110.0, "p99_latency_ms": 119.0},
+            {"protocol": "grpc", "concurrency": 10, "rps": 80.0, "avg_latency_ms": 120.0, "p95_latency_ms": 140.0, "p99_latency_ms": 150.0},
+        ],
+        "rest_async_results": [
+            {"protocol": "rest", "concurrency": 1,  "rps":  9.0, "avg_latency_ms": 110.0, "p95_latency_ms": 112.0, "p99_latency_ms": 138.0},
+            {"protocol": "rest", "concurrency": 10, "rps": 78.0, "avg_latency_ms": 128.0, "p95_latency_ms": 145.0, "p99_latency_ms": 160.0},
+        ],
+    }))
+
+    fig = plot_protocol_comparison(src)
+
+    assert isinstance(fig, Figure)
+    #expect 2 subplots: rps and latency
+    assert len(fig.axes) == 2
