@@ -51,12 +51,6 @@ def generate_all(results_dir: Path = None, plots_dir: Path = None) -> list[Path]
     return written
 
 
-if __name__ == "__main__":
-    paths = generate_all()
-    for p in paths:
-        print(f"wrote {p}")
-
-
 def plot_latency_formats(src: Path) -> Figure:
     data = _load(src)
     models = data["models"]
@@ -225,3 +219,9 @@ def plot_batch_throughput(src: Path) -> Figure:
     ax.legend()
     fig.tight_layout()
     return fig
+
+
+if __name__ == "__main__":
+    paths = generate_all()
+    for p in paths:
+        print(f"wrote {p}")
