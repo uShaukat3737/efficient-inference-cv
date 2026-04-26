@@ -13,6 +13,7 @@ A computer vision project focused on training and efficiently serving a deep lea
 - **Dual Protocol Support**: REST (FastAPI) and gRPC endpoints for protocol comparison under high load. gRPC uses HTTP/2 multiplexing and Protobuf serialization for reduced overhead.
 - **Per-Request Metrics**: Internal instrumentation tracks queue wait time, inference latency, and total end-to-end latency with percentile aggregation (p50, p95, p99). Exposed via `/metrics` endpoint for real-time system observability.
 - **Benchmarking**: Compare inference latencies, batch size efficiencies, system saturation scaling curves across different model formats, worker counts, protocols, and hardware accelerators.
+- **Visualization**: Single-command rendering of every benchmark JSON into publication-ready PNG plots (model format comparison, batch curves, worker scaling, protocol comparison, CPU vs MPS).
 
 ## Project Structure
 
@@ -152,6 +153,11 @@ The project includes a comprehensive suite of benchmarking tools in the `benchma
   ```bash
   python3 -m benchmarks.device_benchmark
   ```
+- **Visualization (Phase 8)**: Renders all benchmark JSON results in `benchmarks/results/` into seven publication-ready PNG plots in `benchmarks/plots/`. Picks the most recent run per experiment type by filename timestamp.
+  ```bash
+  python3 -m benchmarks.visualize
+  ```
+  Generated figures: model format latency comparison, batch latency/throughput curves, async worker scaling, gRPC vs REST protocol comparison, and CPU vs MPS device latency/throughput curves.
 
 All scripts automatically save detailed JSON reports to `benchmarks/results/`. Use `/metrics` endpoint to observe latency breakdown during any benchmark run.
 

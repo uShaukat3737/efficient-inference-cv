@@ -112,3 +112,88 @@
   - Docker benchmarks are deferred to NVIDIA Linux environments where Docker overhead can be fairly measured against native Linux performance on the same hardware.
   - Phase 6 provides production-ready Docker infrastructure; Phase 6 benchmarks use native Apple Silicon (MPS) as the baseline.
   - infrastructure-first approach: Docker is ready for cloud/CI deployment; benchmarks are optimized for local research measurement.
+
+--- Phase 7: CPU vs MPS Hardware Acceleration ---
+
+- why was Predictor hardcoded to CPU if training used MPS all along?
+  - training (train.py) correctly auto-detects MPS via torch.backends.mps.is_available()
+  - but Predictor was written without any device awareness — model.to(device) was never called
+  - all inference benchmarks in phases 3–6 (latency, batch, throughput, worker scaling, gRPC) measured CPU inference only, even on Apple Silicon hardware
+  - Phase 7 adds the device parameter to Predictor and benchmarks whether MPS changes the picture
+
+- why default device="cpu" instead of auto-detecting MPS in Predictor?
+  - the API and worker pool construct Predictor(path) without a device argument — auto-detection would silently change their runtime behavior
+  - explicit parameter keeps the caller in control; benchmark scripts explicitly request "mps"
+  - production serving stays on CPU unless intentionally configured otherwise
+
+- why skip ONNX when device="mps"?
+  - ONNX Runtime on macOS has no MPS execution provider
+  - if device="mps" is passed for an ONNX model, the session silently falls back to CPU
+  - benchmarking it as "mps" would label CPU results as MPS results — invalid comparison data
+  - ONNX is skipped on MPS and only measured on CPU
+
+- why wrap .to(device) in try/except with CPU fallback?
+  - torch.jit.load(...).to("mps") raises RuntimeError on non-Apple-Silicon machines (Linux, CI)
+  - the fallback ensures Predictor works on any platform without the caller needing to check hardware first
+  - applies to both TorchScript (.pt) and raw PyTorch (.pth) branches
+
+- why use torch.mps.synchronize() before stopping the timer?
+  - MPS dispatches ops asynchronously — the kernel is queued, not executed, by the time Python returns
+  - without synchronize(), time.perf_counter() captures dispatch overhead (~0.01ms), not actual inference (~6ms)
+  - this would make MPS appear ~600x faster than CPU — a false result that would invalidate the benchmark
+  - same requirement as torch.cuda.synchronize() for CUDA benchmarks
+
+- why use time.perf_counter() instead of time.time() in the benchmark?
+  - time.time() has ~1ms resolution on macOS, insufficient for measuring sub-millisecond operations
+  - previous benchmarks (latency_test.py, batch_experiments.py) used time.time() — minor quality gap
+  - perf_counter() uses the highest-resolution OS clock and is the correct choice for micro-benchmarks
+
+- what the benchmark revealed:
+  - MPS TorchScript at batch=64: 6,479 img/s vs CPU TorchScript 182 img/s (~35x throughput gain)
+  - at batch=1: MPS (6.6ms) is 2x faster than CPU (13.7ms)
+  - ONNX on CPU (0.55ms at batch=1) outperforms both MPS backends — ONNX's optimized runtime eliminates the MPS dispatch advantage for tiny batches
+  - MPS benefit scales strongly with batch size: at batch=1 it is 2x; at batch=64 it is 35x
+  - this supports the hypothesis that GPU acceleration pays off more as parallelism increases
+
+--- Phase 8: Visualization Layer ---
+
+- why a dedicated visualize.py instead of inline plotting in each benchmark script?
+  - benchmark scripts are pure measurement; mixing plotting concerns in them would conflate "collect data" with "render data" and make re-rendering after a layout tweak require a full re-run
+  - separating into visualize.py means plots can be regenerated for free from cached JSON results — every figure is reproducible without re-running expensive benchmarks
+  - matches the broader system design: producer/consumer separation everywhere (data → queue → renderer)
+
+- why pick the newest JSON per experiment automatically (latest_result)?
+  - benchmark runs are timestamped; manually mapping experiment → result file would rot every time a new run lands
+  - lexicographic sort over `<prefix>_*.json` works because filenames embed ISO timestamps (YYYYMMDD_HHMMSS) — chronological order falls out for free
+  - new experiment runs are picked up automatically; no config update needed
+
+- why one PNG per experiment instead of a multi-panel summary dashboard?
+  - each figure answers exactly one research question — easy to drop individually into the thesis section that discusses it
+  - dashboards force a fixed layout that fights LaTeX/markdown page templates and wastes ink for the questions a given section is not asking
+  - rendering individual figures means a single chart can be regenerated without touching the others
+
+- why exclude ONNX from the CPU vs MPS device comparison plots?
+  - ONNX Runtime has no MPS execution provider on macOS — there is literally no MPS-ONNX line to draw
+  - showing ONNX only on CPU side of a device comparison would imply asymmetric measurement and mislead at a glance
+  - ONNX still appears on the format/batch comparison plots where CPU-only is the implicit baseline — the chart context tells the right story
+
+- why log scale (base 2) on the batch-size axis?
+  - benchmarks sweep batch sizes 1, 2, 4, 8, 16, 32, 64 — geometric progression
+  - linear x-axis would compress small batch sizes into the left edge and make the ONNX/MPS curve shape unreadable
+  - log2 spaces them evenly and reveals the diminishing-return point clearly
+
+- why use matplotlib's "Agg" backend at import time?
+  - the benchmarks run headlessly (CI, ssh, docker exec) — no display server
+  - explicit Agg backend means the same code works on dev laptops and remote hosts without conditional setup
+  - tests can import visualize.py without crashing when no display is available
+
+- why was moving the __main__ block the only meaningful bug in implementation?
+  - the test suite imports plot fns individually — by import time the whole module is loaded, so KeyError on globals() lookup never surfaces
+  - end-to-end execution surfaces it on first run because __main__ runs *during* module load, before later defs are bound
+  - lesson: always run the __main__ entry path as part of "done" verification, not just the tests
+  - notes.txt logged it as a research observation — first-run failure is data
+
+- what the visualizations exposed in real data that wasn't obvious from the JSON:
+  - the worker-scaling chart shows throughput PEAKS at 4 workers and drops at 8 — context-switch tax dominates beyond the physical core count, even with multiprocessing
+  - the device-latency chart has a visible non-monotonic kink at batch=16 on CPU; the JSON numbers alone made it look like noise
+  - the gRPC vs REST p95 lines crossover at low concurrency in a way that the raw numbers obscured — visualization made the queue-dominated regime visible

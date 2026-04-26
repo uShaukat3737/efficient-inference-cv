@@ -140,3 +140,30 @@ source venv/bin/activate
 
 - tdd results: 8 tests written red first, all 8 passed after implementation
   - full suite: 35/35 passed, zero regressions across all prior phases
+
+--- Phase 8: Visualization Layer ---
+
+- benchmarks/visualize.py:
+  - first run failed with KeyError: 'plot_latency_formats'
+    - observed: generate_all() called via __main__, looked up plot fn in globals()
+    - cause: `if __name__ == "__main__":` block was placed before plot fn defs in the file. python defines top-level names in source order, so the entry block executed before the plot fns existed
+    - fixed by: moving the __main__ block to the end of the module
+    - tests did not catch this because they import plot fns individually (file is fully loaded by import time)
+
+- key technical choices:
+  - matplotlib.use("Agg") at import time → no display backend required, works headless and in CI
+  - latest_result(prefix) helper picks newest JSON by filename glob+sort (timestamps lexicographic)
+  - one PNG per experiment, no combined dashboard (easier to slot into report layouts)
+  - ONNX excluded from device comparison plots (no MPS backend in ONNX Runtime)
+
+- what the plots revealed when run on real benchmark data:
+  - fig_03 (batch throughput): ONNX dominates CPU throughput by ~20x at every batch size
+  - fig_04 (worker scaling): peak throughput at 4 workers / concurrency=50 is ~277 rps; drops to ~157 at 8 workers (CPU saturation, GIL/context-switch tax)
+  - fig_05 (gRPC vs REST): RPS curves overlap; gRPC p95 is slightly worse than REST at high concurrency on this dataset (counter-intuitive — likely backend queue dominating, not protocol)
+  - fig_07 (device throughput): MPS scales to ~6500 img/s at batch=64; CPU stays flat at ~200 img/s — visible exponential gap
+  - fig_06 (device latency): CPU shows a non-monotonic kink at batch=16, recovers by batch=32 — possibly L2 cache spill
+
+- tdd discipline:
+  - 9 tests written red-first across 7 plot fns + latest_result + generate_all integration
+  - one test per fn rule held throughout; only generate_all writes >1 PNG
+  - full suite: 45/45 pass, zero regressions
