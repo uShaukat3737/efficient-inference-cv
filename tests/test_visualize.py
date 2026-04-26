@@ -216,3 +216,40 @@ def test_plot_device_throughput_returns_figure(tmp_path):
     cpu_ts = next(line for line in ax.get_lines() if "CPU" in line.get_label() and "TorchScript" in line.get_label())
     #MPS should outperform CPU on TorchScript at batch_size=8
     assert mps_ts.get_ydata()[-1] > cpu_ts.get_ydata()[-1]
+
+
+def test_generate_all_writes_seven_pngs(tmp_path):
+    from benchmarks.visualize import generate_all
+
+    results_dir = tmp_path / "results"
+    plots_dir = tmp_path / "plots"
+    results_dir.mkdir()
+
+    (results_dir / "latency_benchmark_20260101_000000.json").write_text(json.dumps({
+        "models": {
+            "torchscript": {"latency": {"mean_ms": 12.3, "std_ms": 1.1}},
+            "pytorch":     {"latency": {"mean_ms": 18.7, "std_ms": 1.5}},
+            "onnx":        {"latency": {"mean_ms": 22.4, "std_ms": 2.0}},
+        },
+    }))
+    _write_batch_fixture(results_dir / "batch_experiments_20260101_000000.json")
+    (results_dir / "worker_experiments_20260101_000000.json").write_text(json.dumps({
+        "sync_api_baseline": [{"concurrency": 1, "rps": 12.0, "metrics": {"avg_latency": 80.0}, "successful": 50, "failed": 0}],
+        "async_queue_scaling": {
+            "1_workers": [{"concurrency": 1, "rps": 9.0, "metrics": {"avg_latency": 110.0}, "successful": 50, "failed": 0}],
+        },
+    }))
+    (results_dir / "grpc_experiments_20260101_000000.json").write_text(json.dumps({
+        "payload_sizes": {"grpc_protobuf_bytes": 1416, "rest_multipart_bytes": 1594, "rest_overhead_pct": 12.57},
+        "grpc_results": [{"protocol": "grpc", "concurrency": 1, "rps": 9.1, "avg_latency_ms": 109.0, "p95_latency_ms": 110.0, "p99_latency_ms": 119.0}],
+        "rest_async_results": [{"protocol": "rest", "concurrency": 1, "rps": 9.0, "avg_latency_ms": 110.0, "p95_latency_ms": 112.0, "p99_latency_ms": 138.0}],
+    }))
+    _write_device_fixture(results_dir / "device_benchmark_20260101_000000.json")
+
+    written = generate_all(results_dir=results_dir, plots_dir=plots_dir)
+
+    assert len(written) == 7
+    for path in written:
+        assert path.exists()
+        assert path.suffix == ".png"
+        assert path.stat().st_size > 0
