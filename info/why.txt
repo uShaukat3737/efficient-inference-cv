@@ -1,0 +1,128 @@
+- why MobileNetV2 ?
+  - less computationally heavy
+  - good with :
+    - pruning
+    - quantization
+    - batching experiments
+
+- why TorchScript?
+  -optimized version of PyTorch model
+  -removes Python dependency
+  -converts model into static graph
+  -runs faster in production
+
+- why put in evaluation mode?
+  - disables:
+    - dropout -> randomly drops neurons to prevent over-fitting -> dont rely on specific neurons -> forces the neural network to think on itself 
+    - batchnorm updates -> we have evaluations already, having this on would mean using stats of the current batch which alone in itself is useless
+
+- why batch processing?
+  - memory efficient: 32 images at a time vs all 50k
+  - scales to large datasets without OOM
+  - production-ready pattern
+
+- why take out LRU cache from model.py?
+  - it was slowing down the model
+  - it was not needed for the model
+
+- why bisect module?
+  - it is used to find the index of the batch that contains the given index
+  - it is faster than iterating through the list
+
+
+-note : add checkpoints per epoch as training my be halted sometimes 
+
+- why use torch.set_num_threads(1) for inference apis?
+  - pytorch uses all cpu cores per request by default
+  - under 20+ concurrent requests, this spawns 160+ threads and causes cpu thrashing
+  - setting threads to 1 lets the api and worker pool manage parallelism instead
+
+- why compare rest vs grpc?
+  - rest uses json/multipart over http/1.1 — heavy parsing, large payloads, base64 adds 33% overhead
+  - grpc uses protobuf over http/2, reducing payload size and serialization cpu time drastically
+  - side-by-side comparison proves whether binary protocols yield higher throughput for image inference
+
+- why define image_data as raw bytes in protobuf (not base64 string)?
+  - base64 encoding would add ~33% overhead back, defeating the purpose of grpc
+  - protobuf bytes fields are natively binary — no encoding layer, no string parsing
+
+- why generate grpc stubs into src/grpc_api/ instead of a top-level proto/ package?
+  - stubs are tightly coupled to the server code; colocation keeps imports predictable
+  - a top-level proto/ directory would require extra sys.path config with no benefit
+
+- why use grpc.aio (async grpc) instead of the synchronous server?
+  - fastapi is async (asgi); the comparison only holds if both servers use the same concurrency model
+  - a synchronous grpc server would artificially degrade grpc latency and make the comparison meaningless
+
+- why reuse the same producer class in the grpc server?
+  - both servers must go through the same redis queue, batch scheduler, and worker pool
+  - any latency difference measured is purely protocol overhead, not backend variance
+
+- why mirror the same poll_attempts=50 / poll_interval=0.1 timeout in the grpc server?
+  - both servers must have the same maximum wait budget (5 seconds) for a fair comparison
+  - mismatched timeouts would make one server appear more reliable — not the protocol
+
+- why inject producer and redis_client into inferenceservicer via constructor?
+  - allows unit tests to inject mocks without patching module-level globals
+  - makes the dependency graph explicit — the servicer receives infrastructure, it does not own it
+
+- why build docker infrastructure if not benchmarking docker vs native on apple silicon?
+  - docker on mac runs linux containers in a vm; overhead is not representative of real hardware
+  - docker infrastructure is complete and tested — proves the system is production-containerizable
+  - docker benchmarks deferred to nvidia linux where overhead can be fairly measured
+
+- why was predictor hardcoded to cpu if training used mps all along?
+  - train.py auto-detects mps but predictor had no device awareness — model.to(device) was never called
+  - all benchmarks in phases 3–6 measured cpu inference only, even on apple silicon hardware
+  - phase 7 adds the device parameter and benchmarks whether mps changes the picture
+
+- why default device="cpu" instead of auto-detecting mps in predictor?
+  - the api and worker pool construct predictor(path) without a device argument
+  - auto-detection would silently change their runtime behavior
+  - explicit parameter keeps callers in control; benchmark scripts explicitly request "mps"
+
+- why skip onnx when device="mps"?
+  - onnx runtime on macos has no mps execution provider
+  - if device="mps" is passed, the session silently falls back to cpu — invalid comparison data
+
+- why wrap .to(device) in try/except with cpu fallback?
+  - torch.jit.load(...).to("mps") raises runtimeerror on non-apple-silicon machines
+  - fallback ensures predictor works on any platform without the caller checking hardware first
+
+- why use torch.mps.synchronize() before stopping the timer?
+  - mps dispatches ops asynchronously; the kernel is queued, not executed, when python returns
+  - without synchronize(), timer captures dispatch overhead (~0.01ms), not actual inference (~6ms)
+  - same requirement as torch.cuda.synchronize() for cuda benchmarks
+
+- why use time.perf_counter() instead of time.time() in the benchmark?
+  - time.time() has ~1ms resolution on macos, insufficient for sub-millisecond measurements
+  - perf_counter() uses the highest-resolution os clock
+
+- why a dedicated visualize.py instead of inline plotting in each benchmark script?
+  - benchmark scripts are pure measurement; mixing plotting concerns conflates collect with render
+  - plots can be regenerated from cached json results without re-running expensive benchmarks
+
+- why pick the newest json per experiment automatically (latest_result)?
+  - benchmark runs are timestamped; manually mapping experiment → result file rots with each new run
+  - lexicographic sort over <prefix>_*.json works because filenames embed iso timestamps
+
+- why one png per experiment instead of a multi-panel summary dashboard?
+  - each figure answers exactly one research question — easy to drop into the relevant thesis section
+  - dashboards force a fixed layout that fights latex/markdown page templates
+
+- why exclude onnx from the cpu vs mps device comparison plots?
+  - onnx runtime has no mps execution provider on macos — there is no mps-onnx line to draw
+  - onnx still appears on format/batch comparison plots where cpu-only is the implicit baseline
+
+- why use log scale (base 2) on the batch-size axis?
+  - benchmarks sweep batch sizes 1, 2, 4, 8, 16, 32, 64 — geometric progression
+  - linear x-axis compresses small batch sizes and makes curve shape unreadable
+
+- why use matplotlib's "agg" backend at import time?
+  - benchmarks run headlessly (ci, ssh, docker exec) — no display server available
+  - same code works on dev laptops and remote hosts without conditional setup
+
+- why place the __main__ block at the end of visualize.py?
+  - generate_all() looked up plot functions in globals() before they were defined (block was above fn defs)
+  - tests never surface this because importing the module loads it fully before any code runs
+  - always run the __main__ entry path as part of done verification, not just the tests

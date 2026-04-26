@@ -56,16 +56,18 @@ def benchmark_torchscript():
   cpu_usage = []
 
   #warmup runs (important to remove first-run overhead like caching, initialization)
-  for _ in range(10):
-    model(dummy_torch)
+  with torch.no_grad():
+    for _ in range(10):
+      model(dummy_torch)
 
-  #run inference 100 times 
-  for _ in range(100):
-    start = time.time()
-    model(dummy_torch)
-    end = time.time()
-    times.append((end-start)*1000)  # convert to milliseconds
-    cpu_usage.append(process.cpu_percent(interval=0))
+  #run inference 100 times
+  with torch.no_grad():
+    for _ in range(100):
+      start = time.perf_counter()
+      model(dummy_torch)
+      end = time.perf_counter()
+      times.append((end-start)*1000)  # convert to milliseconds
+      cpu_usage.append(process.cpu_percent(interval=0))
 
   stats = compute_stats(times, cpu_usage)
   print_stats(times, cpu_usage)
@@ -87,16 +89,18 @@ def benchmark_pytorch():
   cpu_usage = []
 
   #warmup runs
-  for _ in range(10):
-    model(dummy_torch)
+  with torch.no_grad():
+    for _ in range(10):
+      model(dummy_torch)
 
-  #run inference 100 times 
-  for _ in range(100):
-    start = time.time()
-    model(dummy_torch)
-    end = time.time()
-    times.append((end-start)*1000)
-    cpu_usage.append(process.cpu_percent(interval=0))
+  #run inference 100 times
+  with torch.no_grad():
+    for _ in range(100):
+      start = time.perf_counter()
+      model(dummy_torch)
+      end = time.perf_counter()
+      times.append((end-start)*1000)
+      cpu_usage.append(process.cpu_percent(interval=0))
 
   stats = compute_stats(times, cpu_usage)
   print_stats(times, cpu_usage)
@@ -108,9 +112,10 @@ def benchmark_onnx():
   print(f"Benchmarking: ONNX Model")
   print(f"{'='*50}")
 
-  #create ONNX runtime session with controlled threading 
+  #create ONNX runtime session with controlled threading
   sess_options = ort.SessionOptions()
-  sess_options.intra_op_num_threads = 1                 #(for fair comparison)
+  sess_options.intra_op_num_threads = 1   #within-op parallelism (for fair comparison)
+  sess_options.inter_op_num_threads = 1   #between-op parallelism (was unrestricted, causing unfair speedup)
 
   #load ONNX model into inference session
   session = ort.InferenceSession("models/exported/model.onnx", sess_options)
@@ -128,9 +133,9 @@ def benchmark_onnx():
 
   #run inference 100 times and record time taken
   for _ in range(100):
-    start = time.time()
+    start = time.perf_counter()
     session.run(None, {input_name: dummy_np})
-    end = time.time()
+    end = time.perf_counter()
     times.append((end-start)*1000)
     cpu_usage.append(process.cpu_percent(interval=0))
 

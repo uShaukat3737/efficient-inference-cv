@@ -60,6 +60,8 @@ class Predictor:
             logger.warning(f"ONNX Runtime has no MPS backend. Ignoring device='{device}', using CPU.")
           self.device = torch.device("cpu")
           sess_options = ort.SessionOptions()
+          sess_options.intra_op_num_threads = 1  #match torch.set_num_threads(1) for fair comparison
+          sess_options.inter_op_num_threads = 1  #was unrestricted, causing unfair speedup vs PyTorch
           self.session = ort.InferenceSession(
             str(model_path),
             sess_options,
