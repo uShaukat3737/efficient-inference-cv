@@ -1,9 +1,10 @@
 source venv/bin/activate
 
 - why lazy load dataset instead of loading into memory?
-  - attempting to load 50k images caused extreme ram usage, swapping, and oom crashes
+  - on 8gb m1 unified memory, eagerly loading all 50k cifar-10 float32 tensors plus dataloader prefetch buffers pushed past physical ram limit
+  - caused swap thrashing and mid-epoch oom kills (the dataset itself is ~600mb as float32, but combined with pytorch, model weights, and worker buffers it exceeded 8gb)
   - model training would fail mid-epoch requiring restarts
-  - lazy loading with preprocessed batches and bisect module reduces memory from 50gb+ to ~200mb
+  - lazy loading with preprocessed batches and bisect module keeps resident footprint to ~200mb
 
 - why use a strict latency timeout trigger in batch schedulers?
   - using blocking pop (brpop) caused workers to hang indefinitely under low traffic
@@ -23,6 +24,8 @@ source venv/bin/activate
 - why use a redis-backed queue instead of direct inference?
   - direct inference blocked the asgi event loop, limiting throughput to ~5 rps
   - decoupling via producer/consumer allows fastapi to instantly return while dedicated workers batch requests (1000+ rps)
+  - correction: "~5 rps" for the sync endpoint was an estimate, not a measured result — no benchmark json records baseline sync throughput; actual value was never formally captured
+  - correction: "1000+ rps" was a design goal, not a measured outcome — phase 8 worker scaling benchmark recorded actual peak of ~277 rps at 4 workers / concurrency=50 (fig_04)
 
 - why fix batch size inconsistency?
   - caused shape mismatches and data loading failures during training
@@ -207,6 +210,7 @@ source venv/bin/activate
 
 - what the plots revealed when run on real benchmark data:
   - fig_03 (batch throughput): ONNX dominates CPU throughput by ~20x at every batch size
+    - correction: "~20x at every batch size" is inaccurate — fairness log shows the ratio varies significantly: ~2.2x at batch=1 (onnx 1.05ms vs torchscript 2.33ms) up to ~15x at batch=64 (onnx 64ms vs torchscript 978ms); the dominance is real but grows with batch size, it is not uniform
   - fig_04 (worker scaling): peak throughput at 4 workers / concurrency=50 is ~277 rps; drops to ~157 at 8 workers (CPU saturation, GIL/context-switch tax)
   - fig_05 (gRPC vs REST): RPS curves overlap; gRPC p95 is slightly worse than REST at high concurrency on this dataset (counter-intuitive — likely backend queue dominating, not protocol)
   - fig_07 (device throughput): MPS scales to ~6500 img/s at batch=64; CPU stays flat at ~200 img/s — visible exponential gap
